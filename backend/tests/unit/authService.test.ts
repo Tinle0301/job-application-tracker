@@ -66,3 +66,16 @@ describe('createAuthService', () => {
     expect(signInWithOtp.mock.calls[0][0].options.shouldCreateUser).toBe(false)
   })
 })
+
+describe('resendConfirmation', () => {
+  it('resends the sign-up email with the redirect URL', async () => {
+    const resend = vi.fn().mockResolvedValue({ error: null })
+    const auth = createAuthService({ auth: { resend } } as unknown as SupabaseClient, 'https://app.test')
+    expect(await auth.resendConfirmation(' a@b.co ')).toEqual({ data: null, error: null })
+    expect(resend).toHaveBeenCalledWith({
+      type: 'signup',
+      email: 'a@b.co',
+      options: { emailRedirectTo: 'https://app.test' },
+    })
+  })
+})
