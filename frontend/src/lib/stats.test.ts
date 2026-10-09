@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { computeStats, formatPercent } from './stats'
-import type { Application, Status } from '../types'
+import type { Application, Status } from '@backend/models/types'
 
 function app(status: Status, history: Status[] = [status]): Application {
   return {
@@ -13,6 +13,8 @@ function app(status: Status, history: Status[] = [status]): Application {
     appliedOn: '2026-10-01',
     salary: '',
     notes: '',
+    jobDescription: '',
+    latestAnalysis: null,
     history: history.map((s, i) => ({ status: s, changedAt: `2026-10-0${i + 1}T00:00:00Z` })),
     createdAt: '2026-10-01T00:00:00Z',
     updatedAt: '2026-10-01T00:00:00Z',

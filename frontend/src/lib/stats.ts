@@ -1,5 +1,5 @@
-import type { Application, Status } from '../types'
-import { STATUSES } from '../types'
+import type { Application, Status } from '@backend/models/types'
+import { STATUSES } from '@backend/models/types'
 
 export interface PipelineStats {
   total: number

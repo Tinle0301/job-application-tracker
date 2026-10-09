@@ -11,7 +11,9 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "db:test": "bash scripts/db-test.sh",
+    "functions:check": "deno check supabase/functions/*/index.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
@@ -34,5 +36,5 @@
     "vite": "^8.3.0",
     "vitest": "^5.0.3"
   },
-  "description": "Track job applications and update their status in one place. React + TypeScript + Supabase."
+  "description": "Track job applications with AI auto-fill and resume match scoring. React + TypeScript + Supabase + Claude."
 }

@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { applyFilters, DEFAULT_FILTERS } from './filters'
-import type { Application } from '../types'
+import type { Application } from '@backend/models/types'
 
-const base = { location: '', url: '', salary: '', notes: '', history: [], createdAt: '' }
+const base = {
+  location: '',
+  url: '',
+  salary: '',
+  notes: '',
+  jobDescription: '',
+  latestAnalysis: null,
+  history: [],
+  createdAt: '',
+}
 const apps: Application[] = [
   {
     ...base,

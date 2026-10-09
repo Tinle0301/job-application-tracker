@@ -1,4 +1,4 @@
-import type { Status } from '../types'
+import type { Status } from '@backend/models/types'
 import { STATUS_LABELS, STATUS_STYLES } from '../lib/statuses'
 
 export function StatusBadge({ status }: { status: Status }) {

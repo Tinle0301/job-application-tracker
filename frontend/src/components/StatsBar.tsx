@@ -1,4 +1,4 @@
-import type { Application } from '../types'
+import type { Application } from '@backend/models/types'
 import { computeStats, formatPercent } from '../lib/stats'
 
 export function StatsBar({ apps }: { apps: Application[] }) {

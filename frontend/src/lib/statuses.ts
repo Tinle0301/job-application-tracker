@@ -1,4 +1,4 @@
-import type { Status } from '../types'
+import type { Status } from '@backend/models/types'
 
 export const STATUS_LABELS: Record<Status, string> = {
   wishlist: 'Wishlist',

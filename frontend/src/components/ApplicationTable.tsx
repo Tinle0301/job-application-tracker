@@ -1,10 +1,15 @@
 import { useState } from 'react'
-import type { Application, Status } from '../types'
+import type { Application, FitAnalysis, Status } from '@backend/models/types'
+import type { TrackerApi } from '@backend/services/api'
+import { FitBadge } from './FitBadge'
+import { FitPanel } from './FitPanel'
 import { StatusSelect } from './StatusSelect'
 import { StatusBadge } from './StatusBadge'
 
 interface Props {
+  api: TrackerApi
   apps: Application[]
+  onAnalyzed: (id: string, analysis: FitAnalysis) => void
   onStatusChange: (id: string, status: Status) => void
   onEdit: (app: Application) => void
   onDelete: (app: Application) => void
@@ -16,7 +21,7 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export function ApplicationTable({ apps, onStatusChange, onEdit, onDelete }: Props) {
+export function ApplicationTable({ api, apps, onAnalyzed, onStatusChange, onEdit, onDelete }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   if (apps.length === 0) {
@@ -35,6 +40,7 @@ export function ApplicationTable({ apps, onStatusChange, onEdit, onDelete }: Pro
             <th className="px-4 py-3 font-medium">Company</th>
             <th className="px-4 py-3 font-medium">Role</th>
             <th className="px-4 py-3 font-medium">Status</th>
+            <th className="px-4 py-3 font-medium">Fit</th>
             <th className="px-4 py-3 font-medium">Applied</th>
             <th className="px-4 py-3 font-medium">Updated</th>
             <th className="px-4 py-3" />
@@ -45,6 +51,8 @@ export function ApplicationTable({ apps, onStatusChange, onEdit, onDelete }: Pro
             <Row
               key={app.id}
               app={app}
+              api={api}
+              onAnalyzed={onAnalyzed}
               open={expanded === app.id}
               onToggle={() => setExpanded(expanded === app.id ? null : app.id)}
               onStatusChange={onStatusChange}
@@ -60,6 +68,8 @@ export function ApplicationTable({ apps, onStatusChange, onEdit, onDelete }: Pro
 
 function Row({
   app,
+  api,
+  onAnalyzed,
   open,
   onToggle,
   onStatusChange,
@@ -95,6 +105,9 @@ function Row({
             onChange={(s) => onStatusChange(app.id, s)}
           />
         </td>
+        <td className="px-4 py-3">
+          <FitBadge analysis={app.latestAnalysis} />
+        </td>
         <td className="px-4 py-3 tabular-nums text-stone-600">{formatDate(app.appliedOn)}</td>
         <td className="px-4 py-3 tabular-nums text-stone-600">{formatDate(app.updatedAt)}</td>
         <td className="px-4 py-3 text-right">
@@ -108,8 +121,8 @@ function Row({
       </tr>
       {open && (
         <tr className="bg-stone-50/60">
-          <td colSpan={6} className="px-4 py-4">
-            <div className="grid gap-4 md:grid-cols-2">
+          <td colSpan={7} className="px-4 py-4">
+            <div className="grid gap-6 md:grid-cols-3">
               <div>
                 <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-stone-500">Timeline</h4>
                 <ol className="space-y-2">
@@ -132,6 +145,13 @@ function Row({
                   {app.notes || <span className="text-stone-400">No notes</span>}
                 </p>
               </div>
+              {api.mode === 'supabase' ? (
+                <FitPanel app={app} api={api} onAnalyzed={(a) => onAnalyzed(app.id, a)} />
+              ) : (
+                <p className="text-xs text-stone-500">
+                  Resume match uses AI and needs the Supabase backend (docs/SETUP.md).
+                </p>
+              )}
             </div>
           </td>
         </tr>
