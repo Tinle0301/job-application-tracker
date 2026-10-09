@@ -1,4 +1,4 @@
-import { STATUSES } from '../types'
+import { STATUSES } from '@backend/models/types'
 import { STATUS_LABELS } from '../lib/statuses'
 import type { FilterState, SortKey } from '../lib/filters'
 

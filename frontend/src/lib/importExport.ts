@@ -1,5 +1,5 @@
-import type { Application, ApplicationInput } from '../types'
-import { STATUSES } from '../types'
+import type { Application, ApplicationInput } from '@backend/models/types'
+import { STATUSES } from '@backend/models/types'
 
 export function exportJson(apps: Application[]): string {
   return JSON.stringify(apps, null, 2)
@@ -24,6 +24,7 @@ export function parseImport(text: string): ApplicationInput[] {
       appliedOn: r.appliedOn ? String(r.appliedOn) : null,
       salary: String(r.salary ?? ''),
       notes: String(r.notes ?? ''),
+      jobDescription: String(r.jobDescription ?? ''),
     }
   })
 }

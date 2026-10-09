@@ -1,4 +1,4 @@
-import type { Application, Status } from '../types'
+import type { Application, Status } from '@backend/models/types'
 
 export type SortKey = 'updated' | 'applied' | 'company'
 

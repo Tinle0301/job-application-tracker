@@ -15,6 +15,7 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    "paths": { "@backend/*": ["./backend/*"] },
 
     /* Linting */
     "noUnusedLocals": true,
@@ -22,5 +23,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["frontend/src", "backend", "supabase/functions/_shared/prompts.ts", "supabase/functions/_shared/html.ts"]
 }

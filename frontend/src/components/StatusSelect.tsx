@@ -1,5 +1,5 @@
-import type { Status } from '../types'
-import { STATUSES } from '../types'
+import type { Status } from '@backend/models/types'
+import { STATUSES } from '@backend/models/types'
 import { STATUS_LABELS, STATUS_STYLES } from '../lib/statuses'
 
 interface Props {
