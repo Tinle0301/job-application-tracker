@@ -63,6 +63,8 @@ docker stop jat-pg
 
 Every push to `main` redeploys automatically; pull requests get preview URLs.
 
+**Using the Vercel ↔ Supabase integration?** It creates `SUPABASE_URL` and `SUPABASE_ANON_KEY` (plus secrets). The build accepts those names too (`config/publicEnv.ts`) and exposes only the URL and the anon/publishable key to the browser; the service-role key, JWT secret and Postgres password are never read.
+
 **Troubleshooting:** if the site says _"This deployment isn't connected to its database yet"_, the `VITE_SUPABASE_*` variables were missing at build time. Vite bakes them in during the build, so after adding or fixing them you must **redeploy** (Deployments → ⋯ → Redeploy). Check the names start with `VITE_` and that **Production** is ticked.
 
 ## Launch checklist
