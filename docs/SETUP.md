@@ -63,6 +63,8 @@ docker stop jat-pg
 
 Every push to `main` redeploys automatically; pull requests get preview URLs.
 
+**Troubleshooting:** if the site says _"This deployment isn't connected to its database yet"_, the `VITE_SUPABASE_*` variables were missing at build time. Vite bakes them in during the build, so after adding or fixing them you must **redeploy** (Deployments → ⋯ → Redeploy). Check the names start with `VITE_` and that **Production** is ticked.
+
 ## Launch checklist
 
 - [ ] Migrations 0001–0005 applied (not the seed, not the test stubs)
