@@ -7,6 +7,8 @@ export function useApplications(api: TrackerApi) {
   const [apps, setApps] = useState<Application[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  /** Bumps after every successful write (used to refresh the usage meter). */
+  const [revision, setRevision] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -30,6 +32,7 @@ export function useApplications(api: TrackerApi) {
     }
     setError(null)
     onData(res.data)
+    setRevision((r) => r + 1)
     return true
   }, [])
 
@@ -37,6 +40,7 @@ export function useApplications(api: TrackerApi) {
 
   return {
     apps,
+    revision,
     loading,
     error,
     clearError: () => setError(null),

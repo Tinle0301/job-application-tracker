@@ -1,7 +1,16 @@
 // api.ts — the operations the frontend can call (docs/API_CONTRACT.md).
 // Two implementations: supabaseApi (production) and the frontend's demo API
 // (localStorage). Components only ever see this interface.
-import type { Application, ApplicationInput, ParsedJob, Result, Resume, Status, FitAnalysis } from '../models/types'
+import type {
+  Application,
+  ApplicationInput,
+  ParsedJob,
+  Result,
+  Resume,
+  Status,
+  FitAnalysis,
+  Usage,
+} from '../models/types'
 
 export interface TrackerApi {
   readonly mode: 'supabase' | 'demo'
@@ -13,6 +22,8 @@ export interface TrackerApi {
   updateStatus(id: string, status: Status): Promise<Result<Application>>
   deleteApplication(id: string): Promise<Result<null>>
   importApplications(inputs: ApplicationInput[]): Promise<Result<Application[]>>
+  /** Usage against the per-user limits (docs/LIMITS.md). */
+  getUsage(): Promise<Result<Usage>>
   getResume(): Promise<Result<Resume | null>>
   saveResume(content: string, title?: string): Promise<Result<Resume>>
   /** AI: extract structured fields from pasted posting text or a URL. */

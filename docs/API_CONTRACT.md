@@ -35,6 +35,10 @@ Methods **never throw**. `code` is a stable `UPPER_SNAKE` identifier for program
 | `deleteApplication(id)`        | `null`          | `DELETE_FAILED`                                                                                                                |
 | `importApplications(inputs)`   | `Application[]` | validation codes with `Row N:` prefix in the message, `IMPORT_FAILED`                                                          |
 
+## Usage
+
+`getUsage()` → `Usage` (`applications`, `maxApplications`, `writesToday`, `maxWritesPerDay`). Any write can also fail with a limit code: `APPLICATION_LIMIT`, `RATE_LIMITED`, `DAILY_LIMIT`, `STORAGE_FULL` (see [LIMITS.md](LIMITS.md)). Sign-up can fail with `SIGNUPS_CLOSED`.
+
 ## Resume
 
 | Method                        | Returns          | Error codes                                             |

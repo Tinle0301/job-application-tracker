@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { createDemoApi } from './demoApi'
+import { createDemoApi, DEMO_MAX_APPLICATIONS } from './demoApi'
 import type { ApplicationInput } from '@backend/models/types'
 
 const input: ApplicationInput = {
@@ -80,5 +80,17 @@ describe('demo API', () => {
   it('reports AI as unavailable in demo mode', async () => {
     expect((await api.parseJobPosting({ text: 'x' })).error?.code).toBe('AI_UNAVAILABLE_IN_DEMO')
     expect((await api.analyzeFit('x')).error?.code).toBe('AI_UNAVAILABLE_IN_DEMO')
+  })
+
+  it('enforces the per-user application cap', async () => {
+    const existing = Array.from({ length: DEMO_MAX_APPLICATIONS }, (_, i) => ({
+      id: String(i),
+      company: 'A',
+      role: 'B',
+      history: [],
+    }))
+    localStorage.setItem('job-tracker:applications:v1', JSON.stringify(existing))
+    expect((await api.createApplication(input)).error?.code).toBe('APPLICATION_LIMIT')
+    expect((await api.getUsage()).data?.applications).toBe(DEMO_MAX_APPLICATIONS)
   })
 })

@@ -9,6 +9,9 @@ import { validateApplication, validateResume } from '@backend/services/validatio
 const APPS_KEY = 'job-tracker:applications:v1'
 const RESUME_KEY = 'job-tracker:resume:v1'
 
+/** Same per-user cap as the database default (0005_usage_limits.sql). */
+export const DEMO_MAX_APPLICATIONS = 500
+
 function newId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
@@ -40,6 +43,12 @@ const AI_UNAVAILABLE = fail(
   'AI_UNAVAILABLE_IN_DEMO',
   'AI features need the Supabase backend (the API key stays on the server). See docs/SETUP.md.',
 )
+
+const capReached = () =>
+  fail(
+    'APPLICATION_LIMIT',
+    `You've reached the limit of ${DEMO_MAX_APPLICATIONS} applications. Delete old ones to add more.`,
+  )
 
 export function createDemoApi(storage: Storage | null = safeLocalStorage()): TrackerApi {
   const memory = new Map<string, string>()
@@ -103,8 +112,10 @@ export function createDemoApi(storage: Storage | null = safeLocalStorage()): Tra
     async createApplication(input) {
       const invalid = validateApplication(input)
       if (invalid) return { data: null, error: invalid }
+      const apps = read()
+      if (apps.length >= DEMO_MAX_APPLICATIONS) return capReached()
       const app = create(input)
-      write([...read(), app])
+      write([...apps, app])
       return ok(app)
     },
 
@@ -139,9 +150,20 @@ export function createDemoApi(storage: Storage | null = safeLocalStorage()): Tra
         const invalid = validateApplication(input)
         if (invalid) return fail(invalid.code, `Row ${i + 1}: ${invalid.message}`)
       }
+      const apps = read()
+      if (apps.length + inputs.length > DEMO_MAX_APPLICATIONS) return capReached()
       const created = inputs.map(create)
-      write([...read(), ...created])
+      write([...apps, ...created])
       return ok(created)
+    },
+
+    async getUsage() {
+      return ok({
+        applications: read().length,
+        maxApplications: DEMO_MAX_APPLICATIONS,
+        writesToday: 0,
+        maxWritesPerDay: 0, // not limited in demo mode
+      })
     },
 
     getResume,

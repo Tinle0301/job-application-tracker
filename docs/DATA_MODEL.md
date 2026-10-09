@@ -41,6 +41,10 @@ Append-only: `application_id`, `status`, `changed_at`. One row on insert, one mo
 
 One row per model call (`kind` = `parse` | `match`). `ai_calls_today()` counts the caller's rows in the last 24 hours for the daily quota.
 
+## app_limits, usage_counters (0005)
+
+`app_limits` is a single row of tunable limits (read-only to users). `usage_counters` keeps one row per user with a 1-minute and a 1-day write window; users can't read or change it. See [LIMITS.md](LIMITS.md).
+
 ## Row-level security (0002, 0004)
 
 Every table has RLS enabled. All policies are scoped to the `authenticated` role with `user_id = auth.uid()` (or, for `status_history`, ownership of the parent application). `backend/tests/rls_check.sql` proves cross-user reads, updates and inserts fail.

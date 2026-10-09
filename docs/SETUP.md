@@ -15,7 +15,7 @@ With no `VITE_SUPABASE_*` variables the app stores data in `localStorage`. AI fe
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply the migrations **in order** with the SQL editor (or `psql "$DATABASE_URL" -f …`):
-   `backend/migrations/0001_schema.sql` → `0002_rls_policies.sql` → `0003_functions.sql` → `0004_ai.sql`.
+   `backend/migrations/0001_schema.sql` → `0002_rls_policies.sql` → `0003_functions.sql` → `0004_ai.sql` → `0005_usage_limits.sql`.
    Do **not** run `backend/tests/00_supabase_stubs.sql` on Supabase; it only fakes `auth` for CI.
 3. **Authentication → Sign In / Providers → Email:** make sure Email is enabled, **Confirm email** is on, and set the minimum password length to **8**.
 4. **Authentication → URL Configuration:** add `http://localhost:5173` and your deployed URL as redirect URLs.
@@ -65,9 +65,10 @@ Every push to `main` redeploys automatically; pull requests get preview URLs.
 
 ## Launch checklist
 
-- [ ] Migrations 0001–0004 applied (not the seed, not the test stubs)
+- [ ] Migrations 0001–0005 applied (not the seed, not the test stubs)
 - [ ] RLS enabled on every table (Supabase **Table Editor** shows no "RLS disabled" warnings)
 - [ ] Vercel env vars set; only the **anon** key is used in the browser, never the service-role key
 - [ ] Site URL and redirect URLs point to the Vercel domain
 - [ ] Magic-link email arrives (the built-in Supabase mailer is rate-limited; add custom SMTP for heavier use)
+- [ ] `select * from usage_report();` runs in the SQL editor ([LIMITS.md](LIMITS.md))
 - [ ] CI green on `main`

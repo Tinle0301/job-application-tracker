@@ -178,6 +178,23 @@ export function createSupabaseApi(db: SupabaseClient, options: { aiEnabled?: boo
       return ok((data as ApplicationRow[]).map(toApplication))
     },
 
+    async getUsage() {
+      const { data, error } = await db.rpc('my_usage').single()
+      if (error || !data) return { data: null, error: toServiceError(error, 'LOAD_FAILED') }
+      const r = data as {
+        applications: number
+        max_applications: number
+        writes_today: number
+        max_writes_per_day: number
+      }
+      return ok({
+        applications: r.applications,
+        maxApplications: r.max_applications,
+        writesToday: r.writes_today,
+        maxWritesPerDay: r.max_writes_per_day,
+      })
+    },
+
     getResume,
 
     async saveResume(content, title = 'My resume') {

@@ -65,6 +65,14 @@ export interface ParsedJob {
   description: string
 }
 
+/** What the signed-in user has used against the free-tier limits. */
+export interface Usage {
+  applications: number
+  maxApplications: number
+  writesToday: number
+  maxWritesPerDay: number
+}
+
 export interface ServiceError {
   code: string
   message: string
