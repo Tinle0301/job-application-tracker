@@ -8,6 +8,22 @@ type Result<T> = { data: T; error: null } | { data: null; error: { code: string;
 
 Methods **never throw**. `code` is a stable `UPPER_SNAKE` identifier for programs; `message` is safe to show to users.
 
+## Auth (`backend/services/authService.ts`)
+
+`signIn`, `signUp` (returns `{ needsConfirmation }`), `sendPasswordReset`, `updatePassword`, `sendMagicLink` (existing accounts only), `signOut`. Password reset and magic link reply the same whether or not the email has an account.
+
+| Code                  | When                                    |
+| --------------------- | --------------------------------------- |
+| `INVALID_EMAIL`       | Not an email address                    |
+| `PASSWORD_REQUIRED`   | Sign-in without a password              |
+| `WEAK_PASSWORD`       | Under 8 characters                      |
+| `INVALID_CREDENTIALS` | Wrong email or password                 |
+| `EMAIL_NOT_CONFIRMED` | Account not confirmed yet               |
+| `EMAIL_IN_USE`        | Sign-up with an existing email          |
+| `SAME_PASSWORD`       | New password equals the old one         |
+| `RATE_LIMITED`        | Too many attempts or emails             |
+| `AUTH_FAILED`         | Anything else (raw message never shown) |
+
 ## Applications
 
 | Method                         | Returns         | Error codes                                                                                                                    |

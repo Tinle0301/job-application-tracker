@@ -8,7 +8,9 @@ export default function App() {
 
   return (
     <AuthGate db={supabase}>
-      {(session) => <Tracker api={api} userEmail={session.user.email} onSignOut={() => supabase?.auth.signOut()} />}
+      {(session, auth) => (
+        <Tracker key={session.user.id} api={api} userEmail={session.user.email} onSignOut={() => auth.signOut()} />
+      )}
     </AuthGate>
   )
 }

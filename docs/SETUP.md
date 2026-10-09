@@ -17,15 +17,16 @@ With no `VITE_SUPABASE_*` variables the app stores data in `localStorage`. AI fe
 2. Apply the migrations **in order** with the SQL editor (or `psql "$DATABASE_URL" -f …`):
    `backend/migrations/0001_schema.sql` → `0002_rls_policies.sql` → `0003_functions.sql` → `0004_ai.sql`.
    Do **not** run `backend/tests/00_supabase_stubs.sql` on Supabase; it only fakes `auth` for CI.
-3. **Authentication → URL Configuration:** add `http://localhost:5173` and your deployed URL as redirect URLs.
-4. Copy `.env.example` to `.env`:
+3. **Authentication → Sign In / Providers → Email:** make sure Email is enabled, **Confirm email** is on, and set the minimum password length to **8**.
+4. **Authentication → URL Configuration:** add `http://localhost:5173` and your deployed URL as redirect URLs.
+5. Copy `.env.example` to `.env`:
 
    ```bash
    VITE_SUPABASE_URL=https://<project-ref>.supabase.co
    VITE_SUPABASE_ANON_KEY=<anon public key>
    ```
 
-5. Restart `npm run dev` and sign in with a magic link.
+6. Restart `npm run dev`, create an account, confirm the email, and sign in.
 
 ## 3. Enable AI (optional, Edge Functions)
 
@@ -58,7 +59,7 @@ docker stop jat-pg
 1. Sign in at [vercel.com](https://vercel.com) with GitHub → **Add New… → Project** → import `job-application-tracker`. `vercel.json` already sets the build (`npm run build`, output `dist`).
 2. Under **Environment Variables** add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (leave `VITE_ENABLE_AI` unset for now) → **Deploy**.
 3. Copy the production URL (e.g. `https://job-application-tracker-xyz.vercel.app`) into Supabase **Authentication → URL Configuration**: set it as **Site URL** and add it to **Redirect URLs**.
-4. Open the URL, request a magic link, and add a test application.
+4. Open the URL, create an account, click the confirmation email, sign in, and add a test application. Sign out and try **Forgot password?** once to check the reset email.
 
 Every push to `main` redeploys automatically; pull requests get preview URLs.
 
