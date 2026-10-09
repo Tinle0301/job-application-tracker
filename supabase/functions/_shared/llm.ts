@@ -1,8 +1,6 @@
-// anthropic.ts — minimal Claude Messages API client using forced tool use,
+// llm.ts — minimal Anthropic Messages API client using forced tool use,
 // so the model must answer with JSON matching the tool's input_schema.
 // The API key lives only in the edge function's secrets (never in the browser).
-
-export const DEFAULT_MODEL = 'claude-sonnet-5-5'
 
 export interface ToolDef {
   name: string
@@ -10,7 +8,7 @@ export interface ToolDef {
   input_schema: unknown
 }
 
-export class ClaudeError extends Error {
+export class LlmError extends Error {
   status: number
   constructor(status: number, message: string) {
     super(message)
@@ -18,16 +16,16 @@ export class ClaudeError extends Error {
   }
 }
 
-export async function callClaudeTool(opts: {
+export async function callLlmTool(opts: {
   apiKey: string
-  model?: string
+  model: string
   system: string
   user: string
   tool: ToolDef
   maxTokens?: number
   fetchImpl?: typeof fetch
 }): Promise<{ input: unknown; model: string }> {
-  const model = opts.model || DEFAULT_MODEL
+  const model = opts.model
   const res = await (opts.fetchImpl ?? fetch)('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -44,9 +42,9 @@ export async function callClaudeTool(opts: {
       messages: [{ role: 'user', content: opts.user }],
     }),
   })
-  if (!res.ok) throw new ClaudeError(res.status, `Claude API error ${res.status}`)
+  if (!res.ok) throw new LlmError(res.status, `LLM API error ${res.status}`)
   const body = (await res.json()) as { model?: string; content?: { type: string; name?: string; input?: unknown }[] }
   const block = body.content?.find((c) => c.type === 'tool_use' && c.name === opts.tool.name)
-  if (!block) throw new ClaudeError(502, 'Model returned no structured output')
+  if (!block) throw new LlmError(502, 'Model returned no structured output')
   return { input: block.input, model: body.model ?? model }
 }

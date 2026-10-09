@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { htmlToText, isSafePublicUrl } from '../../../supabase/functions/_shared/html.ts'
 import { matchUserMessage, validateFit, validateParsedJob } from '../../../supabase/functions/_shared/prompts.ts'
-import { callClaudeTool, ClaudeError } from '../../../supabase/functions/_shared/anthropic.ts'
+import { callLlmTool, LlmError } from '../../../supabase/functions/_shared/llm.ts'
 import { PARSE_TOOL } from '../../../supabase/functions/_shared/prompts.ts'
 
 describe('htmlToText', () => {
@@ -91,27 +91,34 @@ describe('matchUserMessage', () => {
   })
 })
 
-describe('callClaudeTool', () => {
+describe('callLlmTool', () => {
   it('forces the tool and returns its input', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          model: 'claude-sonnet-5-5',
+          model: 'test-model',
           content: [{ type: 'tool_use', name: PARSE_TOOL.name, input: { company: 'A' } }],
         }),
       ),
     )
-    const out = await callClaudeTool({ apiKey: 'k', system: 's', user: 'u', tool: PARSE_TOOL, fetchImpl })
-    expect(out).toEqual({ input: { company: 'A' }, model: 'claude-sonnet-5-5' })
+    const out = await callLlmTool({
+      apiKey: 'k',
+      system: 's',
+      user: 'u',
+      model: 'test-model',
+      tool: PARSE_TOOL,
+      fetchImpl,
+    })
+    expect(out).toEqual({ input: { company: 'A' }, model: 'test-model' })
     const body = JSON.parse(fetchImpl.mock.calls[0][1].body)
     expect(body.tool_choice).toEqual({ type: 'tool', name: PARSE_TOOL.name })
     expect(fetchImpl.mock.calls[0][1].headers['x-api-key']).toBe('k')
   })
 
-  it('throws ClaudeError on HTTP errors', async () => {
+  it('throws LlmError on HTTP errors', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 429 }))
     await expect(
-      callClaudeTool({ apiKey: 'k', system: 's', user: 'u', tool: PARSE_TOOL, fetchImpl }),
-    ).rejects.toBeInstanceOf(ClaudeError)
+      callLlmTool({ apiKey: 'k', system: 's', user: 'u', model: 'test-model', tool: PARSE_TOOL, fetchImpl }),
+    ).rejects.toBeInstanceOf(LlmError)
   })
 })

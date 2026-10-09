@@ -13,7 +13,7 @@
     "test:watch": "vitest",
     "format": "prettier --write .",
     "db:test": "bash scripts/db-test.sh",
-    "functions:check": "deno check supabase/functions/*/index.ts"
+    "functions:check": "cd supabase/functions && deno check */index.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
@@ -36,5 +36,5 @@
     "vite": "^8.3.0",
     "vitest": "^5.0.3"
   },
-  "description": "Track job applications with AI auto-fill and resume match scoring. React + TypeScript + Supabase + Claude."
+  "description": "Track job applications with AI auto-fill and resume match scoring. React + TypeScript + Supabase."
 }

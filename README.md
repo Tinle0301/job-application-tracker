@@ -12,19 +12,19 @@ Track job applications from wishlist to offer, with two AI helpers: **paste a jo
 - **Automatic timeline**: a Postgres trigger records every status change, so history can't drift from the data.
 - **Pipeline stats**: submitted, active, interviews, offers, response rate and interview rate.
 - **Search, filter, sort, import/export JSON.**
-- **AI auto-fill** _(Claude, optional: off until enabled)_: paste posting text or a URL; company, role, location, salary, requirements and the full description are filled in. Only empty fields are touched.
-- **AI resume match** _(Claude, optional: off until enabled)_: a 0–100 fit score per application with matched and missing skills and up to five resume suggestions. The latest score shows in the list.
+- **AI auto-fill** _(optional: off until enabled)_: paste posting text or a URL; company, role, location, salary, requirements and the full description are filled in. Only empty fields are touched.
+- **AI resume match** _(optional: off until enabled)_: a 0–100 fit score per application with matched and missing skills and up to five resume suggestions. The latest score shows in the list.
 - **Two modes**: demo (localStorage, no setup) and Supabase (email + password sign-in, row-level security, optional AI).
 
 ## Tech stack
 
-| Layer    | Choice                                                                               |
-| -------- | ------------------------------------------------------------------------------------ |
-| Frontend | React 19, TypeScript, Vite, Tailwind CSS v4                                          |
-| Backend  | Supabase: PostgreSQL, Auth, Row-Level Security, Edge Functions (Deno)                |
-| AI       | Claude API (`claude-sonnet-5-5` by default) with forced tool use for structured JSON |
-| Testing  | Vitest, React Testing Library, SQL tests against Postgres 16 in CI                   |
-| Tooling  | oxlint, Prettier, GitHub Actions (frontend, database, functions jobs)                |
+| Layer    | Choice                                                                |
+| -------- | --------------------------------------------------------------------- |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS v4                           |
+| Backend  | Supabase: PostgreSQL, Auth, Row-Level Security, Edge Functions (Deno) |
+| AI       | LLM via the Anthropic API, with forced tool use for structured JSON   |
+| Testing  | Vitest, React Testing Library, SQL tests against Postgres 16 in CI    |
+| Tooling  | oxlint, Prettier, GitHub Actions (frontend, database, functions jobs) |
 
 ## Project structure
 
@@ -42,7 +42,7 @@ backend/
 supabase/functions/
   parse-job/              Posting text or URL → structured fields
   match-resume/           Resume × job description → fit analysis
-  _shared/                Claude client, prompts + JSON schemas + validators, HTML/URL guards
+  _shared/                LLM client, prompts + JSON schemas + validators, HTML/URL guards
 docs/                     Architecture, data model, API contract, AI features, setup, ADRs
 ```
 

@@ -15,7 +15,7 @@ See [docs/WORKFLOW.md](docs/WORKFLOW.md) for the full process.
 ```bash
 npm run lint && npm run typecheck && npm test && npm run build
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres npm run db:test   # needs Docker Postgres
-deno check supabase/functions/*/index.ts                                          # needs Deno
+npm run functions:check                                                            # needs Deno
 ```
 
 ## Rules of thumb

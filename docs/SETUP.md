@@ -30,14 +30,14 @@ With no `VITE_SUPABASE_*` variables the app stores data in `localStorage`. AI fe
 
 ## 3. Enable AI (optional, Edge Functions)
 
-Install the [Supabase CLI](https://supabase.com/docs/guides/cli) and get an API key from the [Claude Console](https://platform.claude.com).
+Install the [Supabase CLI](https://supabase.com/docs/guides/cli) and get an API key from the [Anthropic Console](https://console.anthropic.com).
 
 ```bash
 supabase login
 supabase link --project-ref <project-ref>
-supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-... ANTHROPIC_MODEL=<model-id>
 # optional
-supabase secrets set ANTHROPIC_MODEL=claude-sonnet-5-5 AI_DAILY_LIMIT=50
+supabase secrets set AI_DAILY_LIMIT=50
 supabase functions deploy parse-job
 supabase functions deploy match-resume
 ```

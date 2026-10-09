@@ -72,7 +72,7 @@ Returns `FitAnalysis`: `id`, `score` (0–100), `matchedSkills[]`, `missingSkill
 | `NO_JOB_DESCRIPTION`     | 400     | Job description under 100 characters                      |
 | `AI_DAILY_LIMIT`         | 429     | `AI_DAILY_LIMIT` calls in 24 h (default 50)               |
 | `AI_BAD_OUTPUT`          | 502     | Model output failed validation                            |
-| `AI_REQUEST_FAILED`      | 502/429 | Claude API error or network failure                       |
-| `AI_NOT_CONFIGURED`      | 503     | `ANTHROPIC_API_KEY` secret missing                        |
+| `AI_REQUEST_FAILED`      | 502/429 | LLM API error or network failure                          |
+| `AI_NOT_CONFIGURED`      | 503     | `ANTHROPIC_API_KEY` or `ANTHROPIC_MODEL` secret missing   |
 | `NOT_SIGNED_IN`          | 401     | Missing or invalid JWT                                    |
 | `AI_UNAVAILABLE_IN_DEMO` | —       | Demo mode (no backend to hold the key)                    |
