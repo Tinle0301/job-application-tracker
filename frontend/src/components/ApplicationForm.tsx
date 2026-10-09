@@ -63,7 +63,7 @@ export function ApplicationForm({ api, initial, onSubmit, onCancel }: Props) {
         className="max-h-[92vh] w-full max-w-2xl space-y-4 overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
       >
         <h2 className="text-lg font-semibold">{initial ? 'Edit application' : 'Add application'}</h2>
-        {api.mode === 'supabase' && <AutoFill api={api} onParsed={(job) => setForm((f) => mergeParsed(f, job))} />}
+        {api.aiEnabled && <AutoFill api={api} onParsed={(job) => setForm((f) => mergeParsed(f, job))} />}
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="text-sm font-medium">
             Company *
