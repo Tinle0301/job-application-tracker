@@ -55,7 +55,10 @@ export function Tracker({ api, userEmail, onSignOut }: Props) {
           </p>
         </div>
         {onSignOut && (
-          <button onClick={onSignOut} className="text-sm text-stone-600 hover:text-stone-900">
+          <button
+            onClick={onSignOut}
+            className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-100"
+          >
             Sign out
           </button>
         )}
