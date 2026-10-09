@@ -1,7 +1,7 @@
 // match-resume — POST { applicationId } → { data: FitAnalysis, error }
 // Scores the user's default resume against the application's job description
 // and stores the result in ai_analyses (RLS: the caller must own both rows).
-import { callClaudeTool, ClaudeError } from '../_shared/anthropic.ts'
+import { callLlmTool, LlmError } from '../_shared/llm.ts'
 import { fail, ok, preflight } from '../_shared/http.ts'
 import { MATCH_SYSTEM, MATCH_TOOL, matchUserMessage, validateFit } from '../_shared/prompts.ts'
 import { currentUser, overQuota, userClient } from '../_shared/supabase.ts'
@@ -18,7 +18,8 @@ Deno.serve(async (req) => {
   if (!userId) return fail(401, 'NOT_SIGNED_IN', 'Sign in to use AI features.')
 
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
-  if (!apiKey) return fail(503, 'AI_NOT_CONFIGURED', 'AI is not configured on this server.')
+  const model = Deno.env.get('ANTHROPIC_MODEL')
+  if (!apiKey || !model) return fail(503, 'AI_NOT_CONFIGURED', 'AI is not configured on this server.')
 
   let applicationId = ''
   try {
@@ -41,9 +42,9 @@ Deno.serve(async (req) => {
   if (await overQuota(db)) return fail(429, 'AI_DAILY_LIMIT', 'Daily AI limit reached. Try again tomorrow.')
 
   try {
-    const { input, model } = await callClaudeTool({
+    const { input, model: usedModel } = await callLlmTool({
       apiKey,
-      model: Deno.env.get('ANTHROPIC_MODEL') ?? undefined,
+      model,
       system: MATCH_SYSTEM,
       user: matchUserMessage(resume.content, {
         company: app.company,
@@ -67,15 +68,15 @@ Deno.serve(async (req) => {
         missing_skills: fit.missingSkills,
         summary: fit.summary,
         suggestions: fit.suggestions,
-        model,
+        model: usedModel,
       })
       .select('id, created_at')
       .single()
     if (error) return fail(500, 'SAVE_FAILED', 'Could not save the analysis.')
     await db.from('ai_usage').insert({ kind: 'match' })
-    return ok({ id: row.id, ...fit, model, createdAt: row.created_at })
+    return ok({ id: row.id, ...fit, model: usedModel, createdAt: row.created_at })
   } catch (e) {
-    const status = e instanceof ClaudeError && e.status === 429 ? 429 : 502
+    const status = e instanceof LlmError && e.status === 429 ? 429 : 502
     return fail(status, 'AI_REQUEST_FAILED', 'The AI service is unavailable right now. Please try again.')
   }
 })

@@ -1,6 +1,6 @@
 # AI features
 
-Two features, both powered by Claude through Supabase Edge Functions.
+Two features, both powered by an LLM (Anthropic API) through Supabase Edge Functions.
 
 ## 1. Paste a job posting → auto-fill
 
@@ -17,7 +17,7 @@ Scoring guide given to the model: 90+ meets nearly everything, 70–89 strong wi
 ## How it works
 
 - **Structured output.** Each call forces a single tool (`record_job_posting` / `record_fit_analysis`) whose `input_schema` defines the JSON shape. Validators in `supabase/functions/_shared/prompts.ts` then trim strings, cap list lengths and reject out-of-range scores.
-- **Model.** `claude-sonnet-5-5` by default; override with the `ANTHROPIC_MODEL` secret (e.g. `claude-haiku-5-5` for lower cost, `claude-opus-5-5` for the most careful analysis).
+- **Model.** Set with the required `ANTHROPIC_MODEL` secret (any model id from the provider's model list). Without it the functions return `AI_NOT_CONFIGURED`.
 - **Prompts** treat the posting and resume as untrusted input and tell the model to ignore instructions inside them, to only count skills the resume shows evidence of, and never to suggest inventing experience.
 
 ## Safety and cost controls

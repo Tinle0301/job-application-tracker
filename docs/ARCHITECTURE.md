@@ -10,7 +10,7 @@
 │                (services)│         │               ├─ resumes, ai_analyses, ai_usage (RLS: auth.uid())  │
 │                          │         │               └─ triggers + RPC: status history, pipeline_stats    │
 │                          │  HTTPS  │                                                                    │
-│                          ├────────►│  Edge Functions (Deno) ── parse-job, match-resume ──► Claude API   │
+│                          ├────────►│  Edge Functions (Deno) ── parse-job, match-resume ──► LLM API      │
 │                          │  JWT    │     run as the caller (their JWT), so RLS still applies            │
 └──────────────────────────┘         └────────────────────────────────────────────────────────────────────┘
 ```
@@ -39,6 +39,6 @@ Supabase is the whole backend: there is no app server to deploy or keep running 
 
 **Update a status.** `StatusSelect` → `updateStatus(id, status)` → `PATCH applications` → `BEFORE UPDATE` trigger sets `updated_at` and appends to `status_history` if the status changed → the row comes back with history and is replaced in state.
 
-**Auto-fill from a posting.** Form → `parseJobPosting({ text | url })` → `parse-job` checks the JWT, quota and (for URLs) the SSRF guard, fetches and strips the page, calls Claude with `record_job_posting` forced → validated fields merged into empty form fields only.
+**Auto-fill from a posting.** Form → `parseJobPosting({ text | url })` → `parse-job` checks the JWT, quota and (for URLs) the SSRF guard, fetches and strips the page, calls the LLM with `record_job_posting` forced → validated fields merged into empty form fields only.
 
-**Analyze fit.** Row detail → `analyzeFit(applicationId)` → `match-resume` reads the application and default resume **as the user** (RLS), calls Claude with `record_fit_analysis` forced → validated result inserted into `ai_analyses` → shown in the panel and as the Fit column badge.
+**Analyze fit.** Row detail → `analyzeFit(applicationId)` → `match-resume` reads the application and default resume **as the user** (RLS), calls the LLM with `record_fit_analysis` forced → validated result inserted into `ai_analyses` → shown in the panel and as the Fit column badge.

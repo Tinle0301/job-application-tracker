@@ -122,7 +122,7 @@ describe('Tracker AI features (mocked supabase API)', () => {
       missingSkills: ['Kubernetes'],
       summary: 'Strong frontend match.',
       suggestions: ['Quantify the POS project impact.'],
-      model: 'claude-sonnet-5-5',
+      model: 'test-model',
       createdAt: new Date().toISOString(),
     }
     const analyzeFit = vi.fn().mockResolvedValue({ data: analysis, error: null })

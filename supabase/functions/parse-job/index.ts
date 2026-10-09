@@ -1,6 +1,6 @@
 // parse-job — POST { text?: string, url?: string } → { data: ParsedJob, error }
 // Paste a job posting (or its URL) and get the form fields back.
-import { callClaudeTool, ClaudeError } from '../_shared/anthropic.ts'
+import { callLlmTool, LlmError } from '../_shared/llm.ts'
 import { htmlToText, isSafePublicUrl } from '../_shared/html.ts'
 import { fail, ok, preflight } from '../_shared/http.ts'
 import { PARSE_SYSTEM, PARSE_TOOL, validateParsedJob } from '../_shared/prompts.ts'
@@ -30,7 +30,8 @@ Deno.serve(async (req) => {
   if (!userId) return fail(401, 'NOT_SIGNED_IN', 'Sign in to use AI features.')
 
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
-  if (!apiKey) return fail(503, 'AI_NOT_CONFIGURED', 'AI is not configured on this server.')
+  const model = Deno.env.get('ANTHROPIC_MODEL')
+  if (!apiKey || !model) return fail(503, 'AI_NOT_CONFIGURED', 'AI is not configured on this server.')
 
   let body: { text?: unknown; url?: unknown }
   try {
@@ -61,9 +62,9 @@ Deno.serve(async (req) => {
   if (await overQuota(db)) return fail(429, 'AI_DAILY_LIMIT', 'Daily AI limit reached. Try again tomorrow.')
 
   try {
-    const { input } = await callClaudeTool({
+    const { input } = await callLlmTool({
       apiKey,
-      model: Deno.env.get('ANTHROPIC_MODEL') ?? undefined,
+      model,
       system: PARSE_SYSTEM,
       user: `<posting${url ? ` source="${url.replace(/"/g, '')}"` : ''}>\n${text}\n</posting>`,
       tool: PARSE_TOOL,
@@ -74,7 +75,7 @@ Deno.serve(async (req) => {
     await db.from('ai_usage').insert({ kind: 'parse' })
     return ok({ ...parsed, description: text })
   } catch (e) {
-    const status = e instanceof ClaudeError && e.status === 429 ? 429 : 502
+    const status = e instanceof LlmError && e.status === 429 ? 429 : 502
     return fail(status, 'AI_REQUEST_FAILED', 'The AI service is unavailable right now. Please try again.')
   }
 })

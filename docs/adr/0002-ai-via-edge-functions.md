@@ -5,7 +5,7 @@
 
 ## Context
 
-Auto-fill and resume matching need the Anthropic API key. Calling Claude from the browser would expose the key. Fetching job URLs from the browser is blocked by CORS anyway.
+Auto-fill and resume matching need the Anthropic API key. Calling the LLM API from the browser would expose the key. Fetching job URLs from the browser is blocked by CORS anyway.
 
 ## Decision
 
@@ -13,7 +13,7 @@ Two Deno Edge Functions, `parse-job` and `match-resume`, hold `ANTHROPIC_API_KEY
 
 ## Alternatives considered
 
-- **Browser → Claude directly:** leaks the key. Rejected.
+- **Browser → LLM API directly:** leaks the key. Rejected.
 - **Separate API server:** contradicts ADR 0001 for two endpoints.
 - **Postgres `http` extension:** keeps logic in SQL but makes prompts, validation and testing much harder.
 
