@@ -57,7 +57,7 @@ npm install
 npm run dev     # http://localhost:5173 – demo mode
 ```
 
-To use Supabase and turn on AI (migrations, `.env`, `supabase secrets set ANTHROPIC_API_KEY=…`, deploying the two functions), follow **[docs/SETUP.md](docs/SETUP.md)**.
+To launch with Supabase + Vercel (and later turn on AI), follow **[docs/SETUP.md](docs/SETUP.md)**.
 
 ## Scripts
 

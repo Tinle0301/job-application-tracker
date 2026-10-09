@@ -61,22 +61,24 @@ export function Tracker({ api, userEmail, onSignOut }: Props) {
         )}
       </header>
 
-      <nav className="flex gap-1 border-b border-stone-200" aria-label="Sections">
-        {(['applications', 'resume'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            aria-current={tab === t ? 'page' : undefined}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium capitalize ${
-              tab === t ? 'border-stone-900 text-stone-900' : 'border-transparent text-stone-500 hover:text-stone-800'
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </nav>
+      {api.aiEnabled && (
+        <nav className="flex gap-1 border-b border-stone-200" aria-label="Sections">
+          {(['applications', 'resume'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              aria-current={tab === t ? 'page' : undefined}
+              className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium capitalize ${
+                tab === t ? 'border-stone-900 text-stone-900' : 'border-transparent text-stone-500 hover:text-stone-800'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </nav>
+      )}
 
-      {tab === 'resume' ? (
+      {api.aiEnabled && tab === 'resume' ? (
         <ResumePanel api={api} />
       ) : (
         <>

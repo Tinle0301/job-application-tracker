@@ -119,7 +119,7 @@ async function invokeFunction<T>(db: SupabaseClient, name: string, body: Record<
   return payload?.error ? fail(payload.error.code, payload.error.message) : ok(payload.data as T)
 }
 
-export function createSupabaseApi(db: SupabaseClient): TrackerApi {
+export function createSupabaseApi(db: SupabaseClient, options: { aiEnabled?: boolean } = {}): TrackerApi {
   const one = async (query: PromiseLike<{ data: unknown; error: unknown }>): Promise<Result<Application>> => {
     const { data, error } = await query
     if (error) return { data: null, error: toServiceError(error, 'DATABASE_ERROR') }
@@ -139,6 +139,7 @@ export function createSupabaseApi(db: SupabaseClient): TrackerApi {
 
   return {
     mode: 'supabase',
+    aiEnabled: options.aiEnabled ?? false,
 
     async listApplications() {
       const { data, error } = await db.from('applications').select(SELECT)

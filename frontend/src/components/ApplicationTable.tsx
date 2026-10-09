@@ -40,7 +40,7 @@ export function ApplicationTable({ api, apps, onAnalyzed, onStatusChange, onEdit
             <th className="px-4 py-3 font-medium">Company</th>
             <th className="px-4 py-3 font-medium">Role</th>
             <th className="px-4 py-3 font-medium">Status</th>
-            <th className="px-4 py-3 font-medium">Fit</th>
+            {api.aiEnabled && <th className="px-4 py-3 font-medium">Fit</th>}
             <th className="px-4 py-3 font-medium">Applied</th>
             <th className="px-4 py-3 font-medium">Updated</th>
             <th className="px-4 py-3" />
@@ -105,9 +105,11 @@ function Row({
             onChange={(s) => onStatusChange(app.id, s)}
           />
         </td>
-        <td className="px-4 py-3">
-          <FitBadge analysis={app.latestAnalysis} />
-        </td>
+        {api.aiEnabled && (
+          <td className="px-4 py-3">
+            <FitBadge analysis={app.latestAnalysis} />
+          </td>
+        )}
         <td className="px-4 py-3 tabular-nums text-stone-600">{formatDate(app.appliedOn)}</td>
         <td className="px-4 py-3 tabular-nums text-stone-600">{formatDate(app.updatedAt)}</td>
         <td className="px-4 py-3 text-right">
@@ -121,8 +123,8 @@ function Row({
       </tr>
       {open && (
         <tr className="bg-stone-50/60">
-          <td colSpan={7} className="px-4 py-4">
-            <div className="grid gap-6 md:grid-cols-3">
+          <td colSpan={api.aiEnabled ? 7 : 6} className="px-4 py-4">
+            <div className={`grid gap-6 ${api.aiEnabled ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
               <div>
                 <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-stone-500">Timeline</h4>
                 <ol className="space-y-2">
@@ -145,13 +147,7 @@ function Row({
                   {app.notes || <span className="text-stone-400">No notes</span>}
                 </p>
               </div>
-              {api.mode === 'supabase' ? (
-                <FitPanel app={app} api={api} onAnalyzed={(a) => onAnalyzed(app.id, a)} />
-              ) : (
-                <p className="text-xs text-stone-500">
-                  Resume match uses AI and needs the Supabase backend (docs/SETUP.md).
-                </p>
-              )}
+              {api.aiEnabled && <FitPanel app={app} api={api} onAnalyzed={(a) => onAnalyzed(app.id, a)} />}
             </div>
           </td>
         </tr>

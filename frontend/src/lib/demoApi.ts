@@ -94,6 +94,7 @@ export function createDemoApi(storage: Storage | null = safeLocalStorage()): Tra
 
   return {
     mode: 'demo',
+    aiEnabled: false,
 
     async listApplications() {
       return ok(read())

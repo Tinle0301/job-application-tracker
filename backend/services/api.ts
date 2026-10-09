@@ -5,6 +5,8 @@ import type { Application, ApplicationInput, ParsedJob, Result, Resume, Status, 
 
 export interface TrackerApi {
   readonly mode: 'supabase' | 'demo'
+  /** True only when the AI edge functions are deployed (VITE_ENABLE_AI=true). */
+  readonly aiEnabled: boolean
   listApplications(): Promise<Result<Application[]>>
   createApplication(input: ApplicationInput): Promise<Result<Application>>
   updateApplication(id: string, input: ApplicationInput): Promise<Result<Application>>

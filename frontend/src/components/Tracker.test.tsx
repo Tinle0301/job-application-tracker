@@ -37,6 +37,14 @@ describe('Tracker (demo mode)', () => {
     render(<Tracker api={createDemoApi(localStorage)} />)
     fireEvent.click(await screen.findByText('+ Add application'))
     expect(screen.queryByText('Auto-fill with AI')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'resume' })).not.toBeInTheDocument()
+  })
+
+  it('hides AI controls on Supabase until VITE_ENABLE_AI is on', async () => {
+    render(<Tracker api={{ ...createDemoApi(localStorage), mode: 'supabase', aiEnabled: false }} userEmail="a@b.co" />)
+    fireEvent.click(await screen.findByText('+ Add application'))
+    expect(screen.queryByText('Auto-fill with AI')).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Fit' })).not.toBeInTheDocument()
   })
 })
 
@@ -44,7 +52,7 @@ describe('Tracker AI features (mocked supabase API)', () => {
   beforeEach(() => localStorage.clear())
 
   function aiApi(overrides: Partial<TrackerApi>): TrackerApi {
-    return { ...createDemoApi(localStorage), mode: 'supabase', ...overrides }
+    return { ...createDemoApi(localStorage), mode: 'supabase', aiEnabled: true, ...overrides }
   }
 
   it('auto-fills the form from a pasted posting without overwriting typed fields', async () => {
@@ -108,7 +116,7 @@ describe('Tracker AI features (mocked supabase API)', () => {
       createdAt: new Date().toISOString(),
     }
     const analyzeFit = vi.fn().mockResolvedValue({ data: analysis, error: null })
-    render(<Tracker api={{ ...base, mode: 'supabase', analyzeFit }} />)
+    render(<Tracker api={{ ...base, mode: 'supabase', aiEnabled: true, analyzeFit }} />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Contoso' }))
     fireEvent.click(screen.getByRole('button', { name: 'Analyze fit' }))

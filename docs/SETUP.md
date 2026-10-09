@@ -27,7 +27,7 @@ With no `VITE_SUPABASE_*` variables the app stores data in `localStorage`. AI fe
 
 5. Restart `npm run dev` and sign in with a magic link.
 
-## 3. Enable AI (Edge Functions)
+## 3. Enable AI (optional, Edge Functions)
 
 Install the [Supabase CLI](https://supabase.com/docs/guides/cli) and get an API key from the [Claude Console](https://platform.claude.com).
 
@@ -41,6 +41,8 @@ supabase functions deploy parse-job
 supabase functions deploy match-resume
 ```
 
+Then set `VITE_ENABLE_AI=true` in `.env` (and in Vercel) and redeploy; until then the AI controls stay hidden.
+
 `SUPABASE_URL` and `SUPABASE_ANON_KEY` are provided to functions automatically. The Anthropic key never goes in `.env` or any `VITE_*` variable.
 
 ## 4. Test the database locally (optional)
@@ -51,6 +53,20 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres npm run db:tes
 docker stop jat-pg
 ```
 
-## 5. Deploy the frontend
+## 5. Deploy the frontend (Vercel)
 
-`npm run build` outputs a static site in `dist/`. On Vercel or Netlify use build command `npm run build`, output directory `dist`, and set the two `VITE_SUPABASE_*` variables.
+1. Sign in at [vercel.com](https://vercel.com) with GitHub → **Add New… → Project** → import `job-application-tracker`. `vercel.json` already sets the build (`npm run build`, output `dist`).
+2. Under **Environment Variables** add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (leave `VITE_ENABLE_AI` unset for now) → **Deploy**.
+3. Copy the production URL (e.g. `https://job-application-tracker-xyz.vercel.app`) into Supabase **Authentication → URL Configuration**: set it as **Site URL** and add it to **Redirect URLs**.
+4. Open the URL, request a magic link, and add a test application.
+
+Every push to `main` redeploys automatically; pull requests get preview URLs.
+
+## Launch checklist
+
+- [ ] Migrations 0001–0004 applied (not the seed, not the test stubs)
+- [ ] RLS enabled on every table (Supabase **Table Editor** shows no "RLS disabled" warnings)
+- [ ] Vercel env vars set; only the **anon** key is used in the browser, never the service-role key
+- [ ] Site URL and redirect URLs point to the Vercel domain
+- [ ] Magic-link email arrives (the built-in Supabase mailer is rate-limited; add custom SMTP for heavier use)
+- [ ] CI green on `main`
