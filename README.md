@@ -12,8 +12,8 @@ Track job applications from wishlist to offer, with two AI helpers: **paste a jo
 - **Automatic timeline**: a Postgres trigger records every status change, so history can't drift from the data.
 - **Pipeline stats**: submitted, active, interviews, offers, response rate and interview rate.
 - **Search, filter, sort, import/export JSON.**
-- **AI auto-fill** _(Claude)_: paste posting text or a URL; company, role, location, salary, requirements and the full description are filled in. Only empty fields are touched.
-- **AI resume match** _(Claude)_: a 0–100 fit score per application with matched and missing skills and up to five resume suggestions. The latest score shows in the list.
+- **AI auto-fill** _(Claude, optional: off until enabled)_: paste posting text or a URL; company, role, location, salary, requirements and the full description are filled in. Only empty fields are touched.
+- **AI resume match** _(Claude, optional: off until enabled)_: a 0–100 fit score per application with matched and missing skills and up to five resume suggestions. The latest score shows in the list.
 - **Two modes**: demo (localStorage, no setup) and Supabase (magic-link auth, row-level security, AI).
 
 ## Tech stack
