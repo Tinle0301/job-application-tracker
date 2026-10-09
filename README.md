@@ -75,6 +75,7 @@ To launch with Supabase + Vercel (and later turn on AI), follow **[docs/SETUP.md
 ## Security
 
 - Every table has RLS scoped to `auth.uid()`; CI proves cross-user reads and writes fail.
+- Database-enforced usage limits keep the project inside the free tiers (per-user caps, write rate limits, sign-up and storage caps). See [docs/LIMITS.md](docs/LIMITS.md).
 - The Anthropic key lives only in Supabase function secrets. Functions run with the caller's JWT, so RLS applies to AI reads and writes too.
 - URL fetching is guarded against SSRF; AI usage has a per-user daily limit. Details in [docs/AI_FEATURES.md](docs/AI_FEATURES.md).
 

@@ -9,6 +9,7 @@ import { Toolbar } from './Toolbar'
 import { ApplicationTable } from './ApplicationTable'
 import { ApplicationForm } from './ApplicationForm'
 import { ResumePanel } from './ResumePanel'
+import { UsageMeter } from './UsageMeter'
 
 type Tab = 'applications' | 'resume'
 
@@ -19,7 +20,8 @@ interface Props {
 }
 
 export function Tracker({ api, userEmail, onSignOut }: Props) {
-  const { apps, loading, error, create, update, updateStatus, remove, importMany, setAnalysis } = useApplications(api)
+  const { apps, revision, loading, error, create, update, updateStatus, remove, importMany, setAnalysis } =
+    useApplications(api)
   const [tab, setTab] = useState<Tab>('applications')
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [editing, setEditing] = useState<Application | 'new' | null>(null)
@@ -86,6 +88,7 @@ export function Tracker({ api, userEmail, onSignOut }: Props) {
       ) : (
         <>
           <StatsBar apps={apps} />
+          <UsageMeter api={api} version={revision} />
           <Toolbar
             filters={filters}
             onChange={setFilters}

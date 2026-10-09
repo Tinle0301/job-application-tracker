@@ -164,3 +164,32 @@ describe('createSupabaseApi', () => {
     expect((await createSupabaseApi(db3).analyzeFit('a1')).error?.code).toBe('AI_REQUEST_FAILED')
   })
 })
+
+describe('usage limits', () => {
+  it('maps database limit errors to their code and friendly message', async () => {
+    const { db } = fakeDb({
+      applications: {
+        data: null,
+        error: { code: 'P0001', message: "APPLICATION_LIMIT: You've reached the limit of 500 applications." },
+      },
+    })
+    const res = await createSupabaseApi(db).createApplication({ ...input })
+    expect(res.error).toEqual({ code: 'APPLICATION_LIMIT', message: "You've reached the limit of 500 applications." })
+  })
+
+  it('reads my_usage into camelCase', async () => {
+    const { db } = fakeDb({})
+    ;(db as unknown as { rpc: unknown }).rpc = () => ({
+      single: async () => ({
+        data: { applications: 42, max_applications: 500, writes_today: 7, max_writes_per_day: 1000 },
+        error: null,
+      }),
+    })
+    expect((await createSupabaseApi(db).getUsage()).data).toEqual({
+      applications: 42,
+      maxApplications: 500,
+      writesToday: 7,
+      maxWritesPerDay: 1000,
+    })
+  })
+})

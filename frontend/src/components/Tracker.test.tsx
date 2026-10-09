@@ -33,6 +33,16 @@ describe('Tracker (demo mode)', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
+  it('shows the usage meter and refreshes it after adding', async () => {
+    render(<Tracker api={createDemoApi(localStorage)} />)
+    expect(await screen.findByText('0 of 500 applications')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('+ Add application'))
+    fireEvent.change(screen.getByLabelText('Company *'), { target: { value: 'Quora' } })
+    fireEvent.change(screen.getByLabelText('Role *'), { target: { value: 'SWE' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add application' }))
+    expect(await screen.findByText('1 of 500 applications')).toBeInTheDocument()
+  })
+
   it('hides AI controls in demo mode', async () => {
     render(<Tracker api={createDemoApi(localStorage)} />)
     fireEvent.click(await screen.findByText('+ Add application'))

@@ -22,6 +22,7 @@ describe('toAuthError', () => {
     [{ code: 'user_already_exists' }, 'EMAIL_IN_USE'],
     [{ code: 'over_email_send_rate_limit' }, 'RATE_LIMITED'],
     [{ status: 429 }, 'RATE_LIMITED'],
+    [{ code: 'unexpected_failure', message: 'Database error saving new user' }, 'SIGNUPS_CLOSED'],
     [{ message: 'db exploded at row 7' }, 'AUTH_FAILED'],
   ])('%o → %s', (err, code) => expect(toAuthError(err).code).toBe(code))
 

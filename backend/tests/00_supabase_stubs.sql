@@ -31,3 +31,10 @@ $$;
 
 grant usage on schema auth to anon, authenticated;
 grant usage on schema public to anon, authenticated;
+
+-- Supabase grants anon/authenticated broad default privileges on new objects
+-- in public (RLS is what actually protects rows). Mirror that here so tests
+-- catch anything that relies on a missing grant instead of RLS or a revoke.
+alter default privileges in schema public grant all on tables to anon, authenticated;
+alter default privileges in schema public grant all on sequences to anon, authenticated;
+alter default privileges in schema public grant execute on functions to anon, authenticated;

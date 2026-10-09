@@ -29,6 +29,8 @@ export function toAuthError(e: { code?: string; message?: string; status?: numbe
     return { code: 'EMAIL_IN_USE', message: 'An account with this email already exists. Sign in instead.' }
   if (code === 'weak_password' || msg.includes('password should'))
     return { code: 'WEAK_PASSWORD', message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` }
+  if (msg.includes('database error saving new user') || msg.includes('signups_closed'))
+    return { code: 'SIGNUPS_CLOSED', message: 'Sign-ups are paused right now. Please try again later.' }
   if (code === 'same_password')
     return { code: 'SAME_PASSWORD', message: 'Choose a different password from your current one.' }
   if (code.includes('rate_limit') || e?.status === 429)

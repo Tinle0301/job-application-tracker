@@ -86,5 +86,16 @@ begin
   if (select count(*) from ai_analyses) <> 1 then raise exception 'RLS: alex could not save own analysis'; end if;
 end $$;
 
+-- Signed-out visitors (anon role) see nothing, even though Supabase grants
+-- anon table privileges by default: the policies only admit authenticated.
+reset role;
+set local role anon;
+select set_config('request.jwt.claim.sub', '', true);
+do $$
+begin
+  if (select count(*) from applications) <> 0 then raise exception 'RLS: anon can read applications'; end if;
+  if (select count(*) from resumes) <> 0 then raise exception 'RLS: anon can read resumes'; end if;
+end $$;
+
 rollback;
 \echo 'rls_check: all checks passed'
