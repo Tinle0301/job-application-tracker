@@ -1,10 +1,11 @@
 import { api } from './lib/api'
-import { supabase } from './lib/supabase'
+import { demoAllowed, missingConfig, supabase } from './lib/supabase'
 import { AuthGate } from './components/AuthGate'
 import { Tracker } from './components/Tracker'
+import { ConfigError } from './components/ConfigError'
 
 export default function App() {
-  if (!supabase) return <Tracker api={api} />
+  if (!supabase) return demoAllowed ? <Tracker api={api} /> : <ConfigError missing={missingConfig} />
 
   return (
     <AuthGate db={supabase}>
