@@ -1,0 +1,8 @@
+# Minimal Supabase CLI config. Migrations live in backend/migrations (see docs/SETUP.md).
+project_id = "job-application-tracker"
+
+[functions.parse-job]
+verify_jwt = true
+
+[functions.match-resume]
+verify_jwt = true
