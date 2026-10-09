@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { AuthScreen } from './AuthGate'
+import { AuthGate, AuthScreen } from './AuthGate'
 import type { AuthService } from '@backend/services/authService'
 
 function fakeAuth(overrides: Partial<AuthService> = {}): AuthService {
@@ -11,6 +11,7 @@ function fakeAuth(overrides: Partial<AuthService> = {}): AuthService {
     signUp: vi.fn().mockResolvedValue({ data: { needsConfirmation: true }, error: null }),
     sendPasswordReset: okNull,
     updatePassword: okNull,
+    resendConfirmation: okNull,
     sendMagicLink: okNull,
     signOut: okNull,
     ...overrides,
@@ -72,5 +73,69 @@ describe('AuthScreen', () => {
     fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'brandnew99' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save new password' }))
     await waitFor(() => expect(auth.updatePassword).toHaveBeenCalledWith('brandnew99'))
+  })
+})
+
+describe('AuthGate confirmation flow', () => {
+  function fakeDb() {
+    let session: unknown = null
+    const db = {
+      auth: {
+        getSession: vi.fn(async () => ({ data: { session } })),
+        onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: () => {} } } })),
+        signUp: vi.fn(async () => ({ data: { user: { id: 'u1' }, session: null }, error: null })),
+        resend: vi.fn(async () => ({ error: null })),
+      },
+    }
+    return {
+      db: db as unknown as import('@supabase/supabase-js').SupabaseClient,
+      signInElsewhere: () => {
+        session = { user: { id: 'u1', email: 'a@b.co' } }
+      },
+    }
+  }
+
+  it('waits after sign-up and opens the app when another tab confirms the email', async () => {
+    const { db, signInElsewhere } = fakeDb()
+    render(<AuthGate db={db}>{(s) => <p>Tracker for {s.user.email}</p>}</AuthGate>)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Create an account' }))
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@b.co' } })
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'longenough' } })
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'longenough' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
+
+    expect(await screen.findByText('Check your email')).toBeInTheDocument()
+    expect(screen.getByText(/opens your tracker automatically/)).toBeInTheDocument()
+
+    // The confirmation tab stores the session in localStorage → `storage` event here.
+    signInElsewhere()
+    window.dispatchEvent(new StorageEvent('storage', { key: 'sb-x-auth-token' }))
+    expect(await screen.findByText('Tracker for a@b.co')).toBeInTheDocument()
+  })
+
+  it('can resend the confirmation email', async () => {
+    const { db } = fakeDb()
+    render(<AuthGate db={db}>{() => <p>app</p>}</AuthGate>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Create an account' }))
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@b.co' } })
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'longenough' } })
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'longenough' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Resend email' }))
+    expect(await screen.findByText(/Sent again/)).toBeInTheDocument()
+  })
+
+  it('tells the confirmation tab it can be closed', async () => {
+    const { db, signInElsewhere } = fakeDb()
+    signInElsewhere()
+    render(
+      <AuthGate db={db} openedFromConfirmationLink>
+        {() => <p>app</p>}
+      </AuthGate>,
+    )
+    expect(await screen.findByText('Email confirmed ✓')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue in this tab' }))
+    expect(await screen.findByText('app')).toBeInTheDocument()
   })
 })

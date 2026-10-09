@@ -44,6 +44,7 @@ export interface AuthService {
   signUp(email: string, password: string): Promise<Result<{ needsConfirmation: boolean }>>
   sendPasswordReset(email: string): Promise<Result<null>>
   updatePassword(password: string): Promise<Result<null>>
+  resendConfirmation(email: string): Promise<Result<null>>
   sendMagicLink(email: string): Promise<Result<null>>
   signOut(): Promise<Result<null>>
 }
@@ -83,6 +84,16 @@ export function createAuthService(db: SupabaseClient, redirectTo: string): AuthS
       if (password.length < MIN_PASSWORD_LENGTH)
         return fail('WEAK_PASSWORD', `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
       const { error } = await db.auth.updateUser({ password })
+      return error ? { data: null, error: toAuthError(error) } : ok(null)
+    },
+
+    async resendConfirmation(email) {
+      if (!EMAIL.test(email.trim())) return fail('INVALID_EMAIL', 'Enter a valid email address.')
+      const { error } = await db.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: { emailRedirectTo: redirectTo },
+      })
       return error ? { data: null, error: toAuthError(error) } : ok(null)
     },
 

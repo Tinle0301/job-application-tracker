@@ -6,15 +6,19 @@ type Mode = 'sign-in' | 'sign-up' | 'forgot' | 'magic' | 'new-password'
 
 interface Props {
   db: SupabaseClient
+  /** This tab was opened by the confirmation email (see lib/supabase.ts). */
+  openedFromConfirmationLink?: boolean
   children: (session: Session, auth: AuthService) => ReactNode
 }
 
 /** Shows sign-in / sign-up / password reset until there is a session, then renders the app. */
-export function AuthGate({ db, children }: Props) {
+export function AuthGate({ db, openedFromConfirmationLink = false, children }: Props) {
   const auth = useMemo(() => createAuthService(db, window.location.origin), [db])
   const [session, setSession] = useState<Session | null>(null)
   const [ready, setReady] = useState(false)
   const [mode, setMode] = useState<Mode>('sign-in')
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null)
+  const [showConfirmed, setShowConfirmed] = useState(openedFromConfirmationLink)
 
   useEffect(() => {
     db.auth.getSession().then(({ data }) => {
@@ -30,9 +34,126 @@ export function AuthGate({ db, children }: Props) {
     return () => data.subscription.unsubscribe()
   }, [db])
 
+  // While signed out, pick up a session another tab created (e.g. the tab the
+  // confirmation email opened): sessions live in localStorage, which fires a
+  // `storage` event here; focus/visibility and a short poll cover the rest.
+  const signedIn = Boolean(session)
+  const waiting = pendingEmail !== null
+  useEffect(() => {
+    if (signedIn) return
+    const check = () => {
+      db.auth.getSession().then(({ data }) => {
+        if (data.session) setSession(data.session)
+      })
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') check()
+    }
+    window.addEventListener('storage', check)
+    window.addEventListener('focus', check)
+    document.addEventListener('visibilitychange', onVisible)
+    const timer = waiting ? window.setInterval(check, 2500) : undefined
+    return () => {
+      window.removeEventListener('storage', check)
+      window.removeEventListener('focus', check)
+      document.removeEventListener('visibilitychange', onVisible)
+      if (timer) window.clearInterval(timer)
+    }
+  }, [db, signedIn, waiting])
+
   if (!ready) return null
+  if (session && showConfirmed) return <EmailConfirmed onContinue={() => setShowConfirmed(false)} />
   if (session && mode !== 'new-password') return <>{children(session, auth)}</>
-  return <AuthScreen auth={auth} mode={mode} setMode={setMode} />
+  if (pendingEmail)
+    return (
+      <CheckEmail
+        email={pendingEmail}
+        auth={auth}
+        onBack={() => {
+          setPendingEmail(null)
+          setMode('sign-in')
+        }}
+      />
+    )
+  return <AuthScreen auth={auth} mode={mode} setMode={setMode} onAwaitingConfirmation={setPendingEmail} />
+}
+
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <main className="mx-auto mt-20 max-w-sm px-4">
+      <h1 className="text-2xl font-semibold tracking-tight">Job Application Tracker</h1>
+      <div className="mt-8 space-y-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">{children}</div>
+    </main>
+  )
+}
+
+/** Shown in the original tab after sign-up; it switches to the app on its own once the email is confirmed. */
+export function CheckEmail({ email, auth, onBack }: { email: string; auth: AuthService; onBack: () => void }) {
+  const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const resend = async () => {
+    setBusy(true)
+    const res = await auth.resendConfirmation(email)
+    setBusy(false)
+    setStatus(
+      res.error
+        ? { kind: 'error', text: res.error.message }
+        : { kind: 'ok', text: 'Sent again. Check your inbox and spam folder.' },
+    )
+  }
+  return (
+    <Shell>
+      <h2 className="text-lg font-semibold">Check your email</h2>
+      <p className="text-sm text-stone-600">
+        We sent a confirmation link to <span className="font-medium text-stone-900">{email}</span>. Click it, then come
+        back to this tab.
+      </p>
+      <p role="status" className="flex items-center gap-2 text-sm text-stone-500">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" aria-hidden="true" />
+        Waiting for confirmation… this page opens your tracker automatically.
+      </p>
+      {status && (
+        <p
+          role={status.kind === 'error' ? 'alert' : 'status'}
+          className={status.kind === 'error' ? 'text-sm text-rose-700' : 'text-sm text-emerald-700'}
+        >
+          {status.text}
+        </p>
+      )}
+      <div className="flex items-center justify-between text-sm">
+        <button onClick={onBack} className="text-stone-600 hover:underline">
+          Back to sign in
+        </button>
+        <button
+          onClick={resend}
+          disabled={busy}
+          className="font-medium text-stone-900 hover:underline disabled:opacity-50"
+        >
+          {busy ? 'Sending…' : 'Resend email'}
+        </button>
+      </div>
+      <p className="text-xs text-stone-400">Opened the link on another device? Just sign in here with your password.</p>
+    </Shell>
+  )
+}
+
+/** Shown in the tab the confirmation email opened. */
+export function EmailConfirmed({ onContinue }: { onContinue: () => void }) {
+  return (
+    <Shell>
+      <h2 className="text-lg font-semibold">Email confirmed ✓</h2>
+      <p className="text-sm text-stone-600">
+        You're signed in. You can close this tab and go back to the one where you created your account; it has opened
+        your tracker.
+      </p>
+      <button
+        onClick={onContinue}
+        className="w-full rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
+      >
+        Continue in this tab
+      </button>
+    </Shell>
+  )
 }
 
 const TITLES: Record<Mode, string> = {
@@ -43,7 +164,17 @@ const TITLES: Record<Mode, string> = {
   'new-password': 'Choose a new password',
 }
 
-export function AuthScreen({ auth, mode, setMode }: { auth: AuthService; mode: Mode; setMode: (m: Mode) => void }) {
+export function AuthScreen({
+  auth,
+  mode,
+  setMode,
+  onAwaitingConfirmation,
+}: {
+  auth: AuthService
+  mode: Mode
+  setMode: (m: Mode) => void
+  onAwaitingConfirmation?: (email: string) => void
+}) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -76,8 +207,14 @@ export function AuthScreen({ auth, mode, setMode }: { auth: AuthService; mode: M
     } else if (mode === 'sign-up') {
       const res = await auth.signUp(email, password)
       if (res.error) setError(res.error.message)
-      else if (res.data.needsConfirmation)
+      else if (res.data.needsConfirmation) {
+        if (onAwaitingConfirmation) {
+          setBusy(false)
+          onAwaitingConfirmation(email.trim())
+          return
+        }
         message = `We sent a confirmation link to ${email}. Open it to finish signing up.`
+      }
     } else if (mode === 'forgot') {
       const res = await auth.sendPasswordReset(email)
       if (res.error) setError(res.error.message)
