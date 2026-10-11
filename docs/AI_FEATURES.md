@@ -2,11 +2,22 @@
 
 Two features, both powered by an LLM (Anthropic API) through Supabase Edge Functions.
 
-## 1. Paste a job posting → auto-fill
+## 1. Paste a job link → auto-fill
 
-In **Add application**, paste the posting text (or its URL) into **Auto-fill with AI**. The `parse-job` function returns company, role, location, salary, employment type, key requirements, a summary and the full description. The form only fills **empty** fields, so nothing you typed is overwritten. The description is saved with the application for later matching.
+In **Add application**, paste the job's link into **Paste a job link** (it starts reading as soon as you paste), or choose **Paste the text instead**. The `parse-job` function returns company, role, location, salary, employment type, key requirements, a summary and the full description. The form only fills **empty** fields, so nothing you typed is overwritten. The description is saved with the application for later matching.
 
-URL mode fetches the page server-side. Many job boards render with JavaScript or require login; in that case you get `FETCH_FAILED` and should paste the text instead.
+Links are read server-side (`supabase/functions/_shared/jobSources.ts`). Most job boards render with JavaScript, so known boards are read through their public posting data instead of the page:
+
+| Link                                                          | Read from                                                    |
+| ------------------------------------------------------------- | ------------------------------------------------------------ |
+| `boards.greenhouse.io/…/jobs/…`, `job-boards.greenhouse.io/…` | Greenhouse Job Board API                                     |
+| `jobs.lever.co/…`                                             | Lever Postings API                                           |
+| `jobs.ashbyhq.com/…`                                          | Ashby Job Board API                                          |
+| `*.myworkdayjobs.com/…/job/…`                                 | Workday's public job JSON                                    |
+| `linkedin.com/jobs/view/…`, any `?currentJobId=…`             | LinkedIn's logged-out job page (may be rate-limited)         |
+| anything else                                                 | the page itself, preferring its schema.org `JobPosting` data |
+
+If a page still can't be read (login walls, bot checks such as Indeed's), the function returns `FETCH_FAILED` and the form switches to **Paste the text instead**, keeping the link in the URL field.
 
 ## 2. Resume–job match score
 
@@ -22,13 +33,13 @@ Scoring guide given to the model: 90+ meets nearly everything, 70–89 strong wi
 
 ## Safety and cost controls
 
-| Risk                      | Control                                                                                                                                            |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API key exposure          | Key exists only in Supabase function secrets; never in `VITE_*` vars or the bundle                                                                 |
-| Reading other users' data | Functions use the caller's JWT, so Postgres RLS applies to every read and write                                                                    |
-| SSRF via URL fetch        | `isSafePublicUrl` blocks non-http(s), credentials, localhost, private/link-local/CGNAT IPs, IPv6 literals; redirects are not followed; 8 s timeout |
-| Runaway cost              | Per-user daily quota (`AI_DAILY_LIMIT`, default 50) via `ai_usage`; inputs capped at 30k chars                                                     |
-| Prompt injection          | Inputs wrapped in tags and labelled untrusted; output must match a schema and pass validation                                                      |
-| Bad output                | Validation failure returns `AI_BAD_OUTPUT` / `PARSE_FAILED`; nothing is stored                                                                     |
+| Risk                      | Control                                                                                                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API key exposure          | Key exists only in Supabase function secrets; never in `VITE_*` vars or the bundle                                                                                  |
+| Reading other users' data | Functions use the caller's JWT, so Postgres RLS applies to every read and write                                                                                     |
+| SSRF via URL fetch        | `isSafePublicUrl` blocks non-http(s), credentials, localhost, private/link-local/CGNAT IPs, IPv6 literals; redirects (max 4) are re-checked hop by hop; 8 s timeout |
+| Runaway cost              | Per-user daily quota (`AI_DAILY_LIMIT`, default 50) via `ai_usage`; inputs capped at 30k chars                                                                      |
+| Prompt injection          | Inputs wrapped in tags and labelled untrusted; output must match a schema and pass validation                                                                       |
+| Bad output                | Validation failure returns `AI_BAD_OUTPUT` / `PARSE_FAILED`; nothing is stored                                                                                      |
 
 Known limits: the quota is checked before the call, so a burst of parallel requests can exceed it by a few; DNS names that resolve to private IPs are not re-checked after resolution (the function itself has no private network access).

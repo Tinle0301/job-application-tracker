@@ -46,14 +46,14 @@ describe('Tracker (demo mode)', () => {
   it('hides AI controls in demo mode', async () => {
     render(<Tracker api={createDemoApi(localStorage)} />)
     fireEvent.click(await screen.findByText('+ Add application'))
-    expect(screen.queryByText('Auto-fill with AI')).not.toBeInTheDocument()
+    expect(screen.queryByText('Paste a job link')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'resume' })).not.toBeInTheDocument()
   })
 
   it('hides AI controls on Supabase until VITE_ENABLE_AI is on', async () => {
     render(<Tracker api={{ ...createDemoApi(localStorage), mode: 'supabase', aiEnabled: false }} userEmail="a@b.co" />)
     fireEvent.click(await screen.findByText('+ Add application'))
-    expect(screen.queryByText('Auto-fill with AI')).not.toBeInTheDocument()
+    expect(screen.queryByText('Paste a job link')).not.toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: 'Fit' })).not.toBeInTheDocument()
   })
 })
@@ -65,41 +65,73 @@ describe('Tracker AI features (mocked supabase API)', () => {
     return { ...createDemoApi(localStorage), mode: 'supabase', aiEnabled: true, ...overrides }
   }
 
-  it('auto-fills the form from a pasted posting without overwriting typed fields', async () => {
-    const parsed: ParsedJob = {
-      company: 'Northwind',
-      role: 'Data Analyst',
-      location: 'Remote (US)',
-      salary: '$90K–$110K',
-      employmentType: 'Full-time',
-      requirements: ['SQL', 'Python'],
-      summary: 'Build dashboards.',
-      description: 'Full posting text',
-    }
+  const parsed: ParsedJob = {
+    company: 'Northwind',
+    role: 'Data Analyst',
+    location: 'Remote (US)',
+    salary: '$90K–$110K',
+    employmentType: 'Full-time',
+    requirements: ['SQL', 'Python'],
+    summary: 'Build dashboards.',
+    description: 'Full posting text',
+  }
+
+  it('auto-fills the form from a pasted job link without overwriting typed fields', async () => {
     const parseJobPosting = vi.fn().mockResolvedValue({ data: parsed, error: null })
     render(<Tracker api={aiApi({ parseJobPosting })} />)
     fireEvent.click(await screen.findByText('+ Add application'))
     fireEvent.change(screen.getByLabelText('Role *'), { target: { value: 'My own title' } })
-    fireEvent.change(screen.getByLabelText('Auto-fill with AI'), { target: { value: 'We are hiring…' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Auto-fill' }))
+    const link = screen.getByLabelText('Paste a job link')
+    expect(link).toHaveFocus()
+    fireEvent.paste(link, { clipboardData: { getData: () => 'https://jobs.lever.co/northwind/1' } })
 
     await waitFor(() => expect(screen.getByLabelText('Company *')).toHaveValue('Northwind'))
-    expect(parseJobPosting).toHaveBeenCalledWith({ text: 'We are hiring…' })
+    expect(parseJobPosting).toHaveBeenCalledWith({ url: 'https://jobs.lever.co/northwind/1' })
     expect(screen.getByLabelText('Role *')).toHaveValue('My own title')
     expect(screen.getByLabelText('Salary')).toHaveValue('$90K–$110K')
+    expect(screen.getByLabelText('Job posting URL')).toHaveValue('https://jobs.lever.co/northwind/1')
     expect(screen.getByLabelText('Job description')).toHaveValue('Full posting text')
   })
 
-  it('sends a URL as { url } and shows the error message', async () => {
-    const parseJobPosting = vi
-      .fn()
-      .mockResolvedValue({ data: null, error: { code: 'FETCH_FAILED', message: "Couldn't read that page." } })
+  it('auto-fills from pasted posting text', async () => {
+    const parseJobPosting = vi.fn().mockResolvedValue({ data: parsed, error: null })
     render(<Tracker api={aiApi({ parseJobPosting })} />)
     fireEvent.click(await screen.findByText('+ Add application'))
-    fireEvent.change(screen.getByLabelText('Auto-fill with AI'), { target: { value: 'https://jobs.example.com/1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Paste the text instead' }))
+    fireEvent.change(screen.getByLabelText('Or paste the posting text'), { target: { value: 'We are hiring…' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Auto-fill' }))
+    await waitFor(() => expect(screen.getByLabelText('Company *')).toHaveValue('Northwind'))
+    expect(parseJobPosting).toHaveBeenCalledWith({ text: 'We are hiring…' })
+  })
+
+  it('falls back to pasting the text when the link cannot be read, keeping the link', async () => {
+    const parseJobPosting = vi
+      .fn()
+      .mockResolvedValueOnce({ data: null, error: { code: 'FETCH_FAILED', message: "Couldn't read that page." } })
+      .mockResolvedValueOnce({ data: parsed, error: null })
+    render(<Tracker api={aiApi({ parseJobPosting })} />)
+    fireEvent.click(await screen.findByText('+ Add application'))
+    fireEvent.change(screen.getByLabelText('Paste a job link'), { target: { value: 'https://jobs.example.com/1' } })
     fireEvent.click(screen.getByRole('button', { name: 'Auto-fill' }))
     expect(await screen.findByText("Couldn't read that page.")).toBeInTheDocument()
     expect(parseJobPosting).toHaveBeenCalledWith({ url: 'https://jobs.example.com/1' })
+    expect(screen.getByLabelText('Job posting URL')).toHaveValue('https://jobs.example.com/1')
+
+    fireEvent.change(screen.getByLabelText('Or paste the posting text'), { target: { value: 'We are hiring…' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Auto-fill' }))
+    await waitFor(() => expect(screen.getByLabelText('Company *')).toHaveValue('Northwind'))
+    expect(parseJobPosting).toHaveBeenLastCalledWith({ text: 'We are hiring…', url: 'https://jobs.example.com/1' })
+  })
+
+  it('does not submit the form when Enter is pressed in the link box', async () => {
+    const parseJobPosting = vi.fn().mockResolvedValue({ data: parsed, error: null })
+    render(<Tracker api={aiApi({ parseJobPosting })} />)
+    fireEvent.click(await screen.findByText('+ Add application'))
+    const link = screen.getByLabelText('Paste a job link')
+    fireEvent.change(link, { target: { value: 'https://jobs.example.com/2' } })
+    fireEvent.keyDown(link, { key: 'Enter' })
+    await waitFor(() => expect(screen.getByLabelText('Company *')).toHaveValue('Northwind'))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
   it('analyzes fit and shows the score in the row and the detail panel', async () => {

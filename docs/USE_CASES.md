@@ -17,11 +17,11 @@
 
 ## UC-3 Auto-fill from a job posting (AI)
 
-1. In the add form, user pastes posting text or a URL into **Auto-fill with AI** and clicks **Auto-fill**.
+1. In the add form, user pastes a job link into **Paste a job link** (reading starts on paste), or posting text via **Paste the text instead**.
 2. Company, role, location, salary, notes (type, summary, requirements) and job description are filled where empty.
 3. User reviews and saves.
 
-**Alternates:** page needs login/JS → `FETCH_FAILED`, user pastes text instead · daily limit → `AI_DAILY_LIMIT`.
+**Alternates:** page needs login → `FETCH_FAILED`, form switches to text mode and keeps the link · daily limit → `AI_DAILY_LIMIT`.
 
 ## UC-4 Check resume fit (AI)
 
