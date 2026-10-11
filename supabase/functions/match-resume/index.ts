@@ -1,7 +1,7 @@
 // match-resume — POST { applicationId } → { data: FitAnalysis, error }
 // Scores the user's default resume against the application's job description
 // and stores the result in ai_analyses (RLS: the caller must own both rows).
-import { callLlmTool, LlmError } from '../_shared/llm.ts'
+import { callLlmTool, DEFAULT_MODEL, LlmError } from '../_shared/llm.ts'
 import { fail, ok, preflight } from '../_shared/http.ts'
 import { MATCH_SYSTEM, MATCH_TOOL, matchUserMessage, validateFit } from '../_shared/prompts.ts'
 import { currentUser, overQuota, userClient } from '../_shared/supabase.ts'
@@ -17,9 +17,9 @@ Deno.serve(async (req) => {
   const userId = await currentUser(db)
   if (!userId) return fail(401, 'NOT_SIGNED_IN', 'Sign in to use AI features.')
 
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
-  const model = Deno.env.get('ANTHROPIC_MODEL')
-  if (!apiKey || !model) return fail(503, 'AI_NOT_CONFIGURED', 'AI is not configured on this server.')
+  const apiKey = Deno.env.get('GEMINI_API_KEY')
+  const model = Deno.env.get('GEMINI_MODEL') || DEFAULT_MODEL
+  if (!apiKey) return fail(503, 'AI_NOT_CONFIGURED', 'AI is not configured on this server.')
 
   let applicationId = ''
   try {

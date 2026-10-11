@@ -92,12 +92,12 @@ describe('matchUserMessage', () => {
 })
 
 describe('callLlmTool', () => {
-  it('forces the tool and returns its input', async () => {
+  it('forces the function call and returns its arguments', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          model: 'test-model',
-          content: [{ type: 'tool_use', name: PARSE_TOOL.name, input: { company: 'A' } }],
+          modelVersion: 'gemini-2.5-flash',
+          candidates: [{ content: { parts: [{ functionCall: { name: PARSE_TOOL.name, args: { company: 'A' } } }] } }],
         }),
       ),
     )
@@ -105,14 +105,27 @@ describe('callLlmTool', () => {
       apiKey: 'k',
       system: 's',
       user: 'u',
-      model: 'test-model',
+      model: 'gemini-2.5-flash',
       tool: PARSE_TOOL,
       fetchImpl,
     })
-    expect(out).toEqual({ input: { company: 'A' }, model: 'test-model' })
-    const body = JSON.parse(fetchImpl.mock.calls[0][1].body)
-    expect(body.tool_choice).toEqual({ type: 'tool', name: PARSE_TOOL.name })
-    expect(fetchImpl.mock.calls[0][1].headers['x-api-key']).toBe('k')
+    expect(out).toEqual({ input: { company: 'A' }, model: 'gemini-2.5-flash' })
+    const [url, init] = fetchImpl.mock.calls[0]
+    expect(url).toContain('/models/gemini-2.5-flash:generateContent')
+    expect(init.headers['x-goog-api-key']).toBe('k')
+    const body = JSON.parse(init.body)
+    expect(body.toolConfig.functionCallingConfig).toEqual({ mode: 'ANY', allowedFunctionNames: [PARSE_TOOL.name] })
+    expect(body.tools[0].functionDeclarations[0].parameters).toEqual(PARSE_TOOL.input_schema)
+    expect(body.systemInstruction.parts[0].text).toBe('s')
+  })
+
+  it('throws when the model answers without the function call', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'hi' }] } }] })))
+    await expect(
+      callLlmTool({ apiKey: 'k', system: 's', user: 'u', model: 'm', tool: PARSE_TOOL, fetchImpl }),
+    ).rejects.toBeInstanceOf(LlmError)
   })
 
   it('throws LlmError on HTTP errors', async () => {

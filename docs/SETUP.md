@@ -30,13 +30,14 @@ With no `VITE_SUPABASE_*` variables the app stores data in `localStorage`. AI fe
 
 ## 3. Enable AI (optional, Edge Functions)
 
-Install the [Supabase CLI](https://supabase.com/docs/guides/cli) and get an API key from the [Anthropic Console](https://console.anthropic.com).
+Install the [Supabase CLI](https://supabase.com/docs/guides/cli) and get a free API key from [Google AI Studio](https://aistudio.google.com/apikey) (sign in with a Google account → **Create API key**). The free tier is rate-limited, and Google may use free-tier prompts to improve its products; see their terms.
 
 ```bash
 supabase login
 supabase link --project-ref <project-ref>
-supabase secrets set ANTHROPIC_API_KEY=sk-ant-... ANTHROPIC_MODEL=<model-id>
-# optional
+supabase secrets set GEMINI_API_KEY=<your-key>
+# optional: another model id from https://ai.google.dev/gemini-api/docs/models (default gemini-2.5-flash)
+supabase secrets set GEMINI_MODEL=gemini-2.5-flash
 supabase secrets set AI_DAILY_LIMIT=50
 supabase functions deploy parse-job
 supabase functions deploy match-resume
@@ -44,7 +45,7 @@ supabase functions deploy match-resume
 
 Then set `VITE_ENABLE_AI=true` in `.env` (and in Vercel) and redeploy; until then the AI controls stay hidden.
 
-`SUPABASE_URL` and `SUPABASE_ANON_KEY` are provided to functions automatically. The Anthropic key never goes in `.env` or any `VITE_*` variable.
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` are provided to functions automatically. The Gemini key never goes in `.env` or any `VITE_*` variable.
 
 ## 4. Test the database locally (optional)
 

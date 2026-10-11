@@ -23,5 +23,5 @@ npm run functions:check                                                         
 - **Services never throw.** Every `TrackerApi` method returns `{ data, error }` with a stable `UPPER_SNAKE` error code. Add new codes to `docs/API_CONTRACT.md`.
 - **Never edit an applied migration.** Add `backend/migrations/000N_<name>.sql` and update `docs/DATA_MODEL.md`.
 - **Every new table gets RLS** and a check in `backend/tests/rls_check.sql`.
-- **Secrets stay server-side.** `ANTHROPIC_API_KEY` lives only in Supabase function secrets; nothing secret goes in `VITE_*` variables.
+- **Secrets stay server-side.** `GEMINI_API_KEY` lives only in Supabase function secrets; nothing secret goes in `VITE_*` variables.
 - Format with `npm run format` (Prettier: no semicolons, single quotes, 120 columns).

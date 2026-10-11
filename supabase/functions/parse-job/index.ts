@@ -1,6 +1,6 @@
 // parse-job — POST { text?: string, url?: string } → { data: ParsedJob, error }
 // Paste a job posting (or its URL) and get the form fields back.
-import { callLlmTool, LlmError } from '../_shared/llm.ts'
+import { callLlmTool, DEFAULT_MODEL, LlmError } from '../_shared/llm.ts'
 import { htmlToText, isSafePublicUrl } from '../_shared/html.ts'
 import { jobPostingFromJsonLd, knownSource, metaSummary, postingText, readKnownSource } from '../_shared/jobSources.ts'
 import { fail, ok, preflight } from '../_shared/http.ts'
@@ -71,9 +71,9 @@ Deno.serve(async (req) => {
   const userId = await currentUser(db)
   if (!userId) return fail(401, 'NOT_SIGNED_IN', 'Sign in to use AI features.')
 
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
-  const model = Deno.env.get('ANTHROPIC_MODEL')
-  if (!apiKey || !model) return fail(503, 'AI_NOT_CONFIGURED', 'AI is not configured on this server.')
+  const apiKey = Deno.env.get('GEMINI_API_KEY')
+  const model = Deno.env.get('GEMINI_MODEL') || DEFAULT_MODEL
+  if (!apiKey) return fail(503, 'AI_NOT_CONFIGURED', 'AI is not configured on this server.')
 
   let body: { text?: unknown; url?: unknown }
   try {

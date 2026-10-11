@@ -74,6 +74,6 @@ Returns `FitAnalysis`: `id`, `score` (0–100), `matchedSkills[]`, `missingSkill
 | `AUTOFILL_LIMIT`         | 429     | Lifetime auto-fill cap used up (default 3, `app_limits`)  |
 | `AI_BAD_OUTPUT`          | 502     | Model output failed validation                            |
 | `AI_REQUEST_FAILED`      | 502/429 | LLM API error or network failure                          |
-| `AI_NOT_CONFIGURED`      | 503     | `ANTHROPIC_API_KEY` or `ANTHROPIC_MODEL` secret missing   |
+| `AI_NOT_CONFIGURED`      | 503     | `GEMINI_API_KEY` secret missing                           |
 | `NOT_SIGNED_IN`          | 401     | Missing or invalid JWT                                    |
 | `AI_UNAVAILABLE_IN_DEMO` | —       | Demo mode (no backend to hold the key)                    |

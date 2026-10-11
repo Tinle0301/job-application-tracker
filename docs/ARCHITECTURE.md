@@ -15,7 +15,7 @@
 └──────────────────────────┘         └────────────────────────────────────────────────────────────────────┘
 ```
 
-Supabase is the whole backend: there is no app server to deploy or keep running ([ADR 0001](adr/0001-supabase-no-app-server.md)). The only server-side code is two small Edge Functions that hold the Anthropic API key ([ADR 0002](adr/0002-ai-via-edge-functions.md)).
+Supabase is the whole backend: there is no app server to deploy or keep running ([ADR 0001](adr/0001-supabase-no-app-server.md)). The only server-side code is two small Edge Functions that hold the Gemini API key ([ADR 0002](adr/0002-ai-via-edge-functions.md)).
 
 ## Layers
 

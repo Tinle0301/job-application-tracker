@@ -1,6 +1,7 @@
-// llm.ts — minimal Anthropic Messages API client using forced tool use,
+// llm.ts — minimal Google Gemini API client using forced function calling,
 // so the model must answer with JSON matching the tool's input_schema.
 // The API key lives only in the edge function's secrets (never in the browser).
+// Gemini has a free tier: get a key at https://aistudio.google.com/apikey.
 
 export interface ToolDef {
   name: string
@@ -16,6 +17,9 @@ export class LlmError extends Error {
   }
 }
 
+/** Used when the GEMINI_MODEL secret is not set; a fast model on the free tier. */
+export const DEFAULT_MODEL = 'gemini-2.5-flash'
+
 export async function callLlmTool(opts: {
   apiKey: string
   model: string
@@ -26,25 +30,35 @@ export async function callLlmTool(opts: {
   fetchImpl?: typeof fetch
 }): Promise<{ input: unknown; model: string }> {
   const model = opts.model
-  const res = await (opts.fetchImpl ?? fetch)('https://api.anthropic.com/v1/messages', {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`
+  const res = await (opts.fetchImpl ?? fetch)(url, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': opts.apiKey,
-      'anthropic-version': '2023-06-01',
-    },
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': opts.apiKey },
     body: JSON.stringify({
-      model,
-      max_tokens: opts.maxTokens ?? 1500,
-      system: opts.system,
-      tools: [opts.tool],
-      tool_choice: { type: 'tool', name: opts.tool.name },
-      messages: [{ role: 'user', content: opts.user }],
+      systemInstruction: { parts: [{ text: opts.system }] },
+      contents: [{ role: 'user', parts: [{ text: opts.user }] }],
+      tools: [
+        {
+          functionDeclarations: [
+            { name: opts.tool.name, description: opts.tool.description, parameters: opts.tool.input_schema },
+          ],
+        },
+      ],
+      toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [opts.tool.name] } },
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: opts.maxTokens ?? 1500,
+        // 2.5 Flash models think by default, which spends the output budget; extraction doesn't need it.
+        ...(model.startsWith('gemini-2.5-flash') ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+      },
     }),
   })
   if (!res.ok) throw new LlmError(res.status, `LLM API error ${res.status}`)
-  const body = (await res.json()) as { model?: string; content?: { type: string; name?: string; input?: unknown }[] }
-  const block = body.content?.find((c) => c.type === 'tool_use' && c.name === opts.tool.name)
-  if (!block) throw new LlmError(502, 'Model returned no structured output')
-  return { input: block.input, model: body.model ?? model }
+  const body = (await res.json()) as {
+    modelVersion?: string
+    candidates?: { content?: { parts?: { functionCall?: { name?: string; args?: unknown } }[] } }[]
+  }
+  const call = body.candidates?.[0]?.content?.parts?.find((p) => p.functionCall?.name === opts.tool.name)
+  if (!call?.functionCall) throw new LlmError(502, 'Model returned no structured output')
+  return { input: call.functionCall.args ?? {}, model: body.modelVersion ?? model }
 }

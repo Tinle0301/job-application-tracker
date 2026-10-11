@@ -21,7 +21,7 @@
 | ID    | Requirement                                                                                    |
 | ----- | ---------------------------------------------------------------------------------------------- |
 | NFR-1 | Authorization is enforced by Postgres RLS and covered by automated tests.                      |
-| NFR-2 | Secrets (Anthropic API key) never reach the browser or the repository.                         |
+| NFR-2 | Secrets (Gemini API key) never reach the browser or the repository.                            |
 | NFR-3 | AI usage is limited per user per day; inputs are size-capped.                                  |
 | NFR-4 | All service calls return `{ data, error }` with stable error codes; raw DB errors are hidden.  |
 | NFR-5 | CI runs lint, format check, typecheck, unit/component tests, build, DB tests and `deno check`. |

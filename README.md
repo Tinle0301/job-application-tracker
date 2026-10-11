@@ -22,7 +22,7 @@ Track job applications from wishlist to offer, with two AI helpers: **paste a jo
 | -------- | --------------------------------------------------------------------- |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4                           |
 | Backend  | Supabase: PostgreSQL, Auth, Row-Level Security, Edge Functions (Deno) |
-| AI       | LLM via the Anthropic API, with forced tool use for structured JSON   |
+| AI       | Google Gemini API (free tier), with forced function calling for JSON  |
 | Testing  | Vitest, React Testing Library, SQL tests against Postgres 16 in CI    |
 | Tooling  | oxlint, Prettier, GitHub Actions (frontend, database, functions jobs) |
 
@@ -76,7 +76,7 @@ To launch with Supabase + Vercel (and later turn on AI), follow **[docs/SETUP.md
 
 - Every table has RLS scoped to `auth.uid()`; CI proves cross-user reads and writes fail.
 - Database-enforced usage limits keep the project inside the free tiers (per-user caps, write rate limits, sign-up and storage caps). See [docs/LIMITS.md](docs/LIMITS.md).
-- The Anthropic key lives only in Supabase function secrets. Functions run with the caller's JWT, so RLS applies to AI reads and writes too.
+- The Gemini API key lives only in Supabase function secrets. Functions run with the caller's JWT, so RLS applies to AI reads and writes too.
 - URL fetching is guarded against SSRF; AI usage has a per-user daily limit. Details in [docs/AI_FEATURES.md](docs/AI_FEATURES.md).
 
 ## Import format
