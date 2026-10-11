@@ -71,6 +71,7 @@ Returns `FitAnalysis`: `id`, `score` (0–100), `matchedSkills[]`, `missingSkill
 | `NO_RESUME`              | 400     | No default resume saved                                   |
 | `NO_JOB_DESCRIPTION`     | 400     | Job description under 100 characters                      |
 | `AI_DAILY_LIMIT`         | 429     | `AI_DAILY_LIMIT` calls in 24 h (default 50)               |
+| `AUTOFILL_LIMIT`         | 429     | Lifetime auto-fill cap used up (default 3, `app_limits`)  |
 | `AI_BAD_OUTPUT`          | 502     | Model output failed validation                            |
 | `AI_REQUEST_FAILED`      | 502/429 | LLM API error or network failure                          |
 | `AI_NOT_CONFIGURED`      | 503     | `ANTHROPIC_API_KEY` or `ANTHROPIC_MODEL` secret missing   |

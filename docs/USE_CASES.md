@@ -21,7 +21,7 @@
 2. Company, role, location, salary, notes (type, summary, requirements) and job description are filled where empty.
 3. User reviews and saves.
 
-**Alternates:** page needs login → `FETCH_FAILED`, form switches to text mode and keeps the link · daily limit → `AI_DAILY_LIMIT`.
+**Alternates:** page needs login → `FETCH_FAILED`, form switches to text mode and keeps the link · daily limit → `AI_DAILY_LIMIT` · after 3 successful auto-fills → `AUTOFILL_LIMIT`, the link box is replaced by a note and the user fills the form by hand.
 
 ## UC-4 Check resume fit (AI)
 

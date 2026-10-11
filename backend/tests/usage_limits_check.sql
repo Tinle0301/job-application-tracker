@@ -65,6 +65,50 @@ begin
   end;
 end $$;
 
+-- Auto-fill cap: 3 successful auto-fills per user, ever. Fit scores don't count.
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+do $$
+begin
+  if autofills_left() <> 3 then raise exception 'LIMIT: autofills_left should start at 3'; end if;
+end $$;
+insert into ai_usage (kind) values ('parse');
+insert into ai_usage (kind) values ('parse');
+insert into ai_usage (kind) values ('match');
+insert into ai_usage (kind) values ('parse');
+do $$
+declare r record;
+begin
+  if autofills_left() <> 0 then raise exception 'LIMIT: autofills_left should be 0'; end if;
+  select * into r from my_usage();
+  if r.autofills_used <> 3 or r.max_autofills <> 3 then
+    raise exception 'LIMIT: my_usage autofills wrong: %', r;
+  end if;
+end $$;
+do $$
+begin
+  insert into ai_usage (kind) values ('parse');
+  raise exception 'LIMIT: 4th auto-fill was allowed';
+exception when raise_exception then
+  if sqlerrm not like 'AUTOFILL_LIMIT:%' then raise; end if;
+end $$;
+-- Fit scores keep working after the cap.
+insert into ai_usage (kind) values ('match');
+-- Users can't erase their history to get more (no delete policy: 0 rows, or no privilege).
+do $$
+begin
+  begin
+    delete from ai_usage;
+  exception when insufficient_privilege then null;
+  end;
+  if autofills_left() <> 0 then raise exception 'LIMIT: deleting ai_usage restored auto-fills'; end if;
+end $$;
+-- Sam's allowance is his own.
+select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true);
+do $$
+begin
+  if autofills_left() <> 3 then raise exception 'LIMIT: Sam''s allowance affected'; end if;
+end $$;
+
 reset role;
 
 -- Sign-up cap: 2 seeded users, cap 3 → one more is fine, the next is blocked.

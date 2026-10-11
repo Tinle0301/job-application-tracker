@@ -5,7 +5,7 @@ import { htmlToText, isSafePublicUrl } from '../_shared/html.ts'
 import { jobPostingFromJsonLd, knownSource, metaSummary, postingText, readKnownSource } from '../_shared/jobSources.ts'
 import { fail, ok, preflight } from '../_shared/http.ts'
 import { PARSE_SYSTEM, PARSE_TOOL, validateParsedJob } from '../_shared/prompts.ts'
-import { currentUser, overQuota, userClient } from '../_shared/supabase.ts'
+import { AUTOFILL_LIMIT_MESSAGE, autofillsLeft, currentUser, overQuota, userClient } from '../_shared/supabase.ts'
 
 const MAX_INPUT = 30000
 const MAX_REDIRECTS = 4
@@ -84,6 +84,11 @@ Deno.serve(async (req) => {
   let text = typeof body.text === 'string' ? body.text.trim() : ''
   const url = typeof body.url === 'string' ? body.url.trim() : ''
 
+  // Checked first so a used-up account never costs a page fetch or model call.
+  const left = await autofillsLeft(db)
+  if (left === null) return fail(503, 'AI_REQUEST_FAILED', 'Auto-fill is unavailable right now. Please try again.')
+  if (left <= 0) return fail(429, 'AUTOFILL_LIMIT', AUTOFILL_LIMIT_MESSAGE)
+
   if (!text && url) {
     if (!isSafePublicUrl(url)) return fail(400, 'INVALID_URL', 'That URL is not a public http(s) page.')
     try {
@@ -114,7 +119,9 @@ Deno.serve(async (req) => {
     })
     const parsed = validateParsedJob(input)
     if (!parsed) return fail(422, 'PARSE_FAILED', "That doesn't look like a job posting.")
-    await db.from('ai_usage').insert({ kind: 'parse' })
+    // The database enforces the cap on this insert too (parallel requests).
+    const { error } = await db.from('ai_usage').insert({ kind: 'parse' })
+    if (error?.message?.startsWith('AUTOFILL_LIMIT:')) return fail(429, 'AUTOFILL_LIMIT', AUTOFILL_LIMIT_MESSAGE)
     return ok({ ...parsed, description: text })
   } catch (e) {
     const status = e instanceof LlmError && e.status === 429 ? 429 : 502

@@ -4,15 +4,16 @@ The app is built to stay inside the free tiers of Supabase (500 MB database, 50k
 
 ## Limits
 
-| Limit                       | Default                         | Error code          | What the user sees                            |
-| --------------------------- | ------------------------------- | ------------------- | --------------------------------------------- |
-| Applications per user       | 500                             | `APPLICATION_LIMIT` | Delete old applications to add more           |
-| Writes per minute, per user | 60                              | `RATE_LIMITED`      | Wait a minute and try again                   |
-| Writes per day, per user    | 1,000                           | `DAILY_LIMIT`       | Resets in 24 hours                            |
-| Total accounts              | 1,000                           | `SIGNUPS_CLOSED`    | Sign-ups are paused                           |
-| Database size               | 400 MB (80%)                    | `STORAGE_FULL`      | New data can't be saved; deleting still works |
-| Field sizes                 | see [DATA_MODEL](DATA_MODEL.md) | constraint errors   | Validation message in the form                |
-| AI calls per user per day   | 50                              | `AI_DAILY_LIMIT`    | Only when AI is enabled                       |
+| Limit                        | Default                         | Error code          | What the user sees                                           |
+| ---------------------------- | ------------------------------- | ------------------- | ------------------------------------------------------------ |
+| Applications per user        | 500                             | `APPLICATION_LIMIT` | Delete old applications to add more                          |
+| Writes per minute, per user  | 60                              | `RATE_LIMITED`      | Wait a minute and try again                                  |
+| Writes per day, per user     | 1,000                           | `DAILY_LIMIT`       | Resets in 24 hours                                           |
+| Total accounts               | 1,000                           | `SIGNUPS_CLOSED`    | Sign-ups are paused                                          |
+| Database size                | 400 MB (80%)                    | `STORAGE_FULL`      | New data can't be saved; deleting still works                |
+| Field sizes                  | see [DATA_MODEL](DATA_MODEL.md) | constraint errors   | Validation message in the form                               |
+| AI calls per user per day    | 50                              | `AI_DAILY_LIMIT`    | Only when AI is enabled                                      |
+| AI auto-fills per user, ever | 3                               | `AUTOFILL_LIMIT`    | Link box is replaced by a note; the form still works by hand |
 
 A "write" is one insert/update/delete **statement**, so importing 300 applications counts as one write. Signed-out visitors can't write at all.
 
@@ -27,6 +28,7 @@ select * from usage_report();
 -- Change a limit (takes effect immediately, no deploy)
 update app_limits set max_users = 2000;
 update app_limits set max_applications_per_user = 1000;
+update app_limits set max_autofills_per_user = 10;
 ```
 
 `usage_report()` and `app_limits` updates are owner-only; the app's roles can read the limits but not change them, and can't see other people's counters.

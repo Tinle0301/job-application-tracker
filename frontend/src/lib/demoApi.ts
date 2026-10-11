@@ -163,6 +163,8 @@ export function createDemoApi(storage: Storage | null = safeLocalStorage()): Tra
         maxApplications: DEMO_MAX_APPLICATIONS,
         writesToday: 0,
         maxWritesPerDay: 0, // not limited in demo mode
+        autofillsUsed: 0,
+        maxAutofills: 0,
       })
     },
 

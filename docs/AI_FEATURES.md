@@ -6,6 +6,8 @@ Two features, both powered by an LLM (Anthropic API) through Supabase Edge Funct
 
 In **Add application**, paste the job's link into **Paste a job link** (it starts reading as soon as you paste), or choose **Paste the text instead**. The `parse-job` function returns company, role, location, salary, employment type, key requirements, a summary and the full description. The form only fills **empty** fields, so nothing you typed is overwritten. The description is saved with the application for later matching.
 
+Each user gets **3 auto-fills in total** (successful ones, by link or text). The box shows how many are left; once they're used, it's replaced by a short note and applications are added by hand. The cap lives in `app_limits.max_autofills_per_user` (`backend/migrations/0006_autofill_limit.sql`) and is enforced by the database, so it can be changed from the SQL editor without a deploy.
+
 Links are read server-side (`supabase/functions/_shared/jobSources.ts`). Most job boards render with JavaScript, so known boards are read through their public posting data instead of the page:
 
 | Link                                                          | Read from                                                    |
@@ -33,13 +35,13 @@ Scoring guide given to the model: 90+ meets nearly everything, 70–89 strong wi
 
 ## Safety and cost controls
 
-| Risk                      | Control                                                                                                                                                             |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API key exposure          | Key exists only in Supabase function secrets; never in `VITE_*` vars or the bundle                                                                                  |
-| Reading other users' data | Functions use the caller's JWT, so Postgres RLS applies to every read and write                                                                                     |
-| SSRF via URL fetch        | `isSafePublicUrl` blocks non-http(s), credentials, localhost, private/link-local/CGNAT IPs, IPv6 literals; redirects (max 4) are re-checked hop by hop; 8 s timeout |
-| Runaway cost              | Per-user daily quota (`AI_DAILY_LIMIT`, default 50) via `ai_usage`; inputs capped at 30k chars                                                                      |
-| Prompt injection          | Inputs wrapped in tags and labelled untrusted; output must match a schema and pass validation                                                                       |
-| Bad output                | Validation failure returns `AI_BAD_OUTPUT` / `PARSE_FAILED`; nothing is stored                                                                                      |
+| Risk                      | Control                                                                                                                                                                                                                          |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API key exposure          | Key exists only in Supabase function secrets; never in `VITE_*` vars or the bundle                                                                                                                                               |
+| Reading other users' data | Functions use the caller's JWT, so Postgres RLS applies to every read and write                                                                                                                                                  |
+| SSRF via URL fetch        | `isSafePublicUrl` blocks non-http(s), credentials, localhost, private/link-local/CGNAT IPs, IPv6 literals; redirects (max 4) are re-checked hop by hop; 8 s timeout                                                              |
+| Runaway cost              | Lifetime cap of 3 auto-fills per user (`AUTOFILL_LIMIT`, `app_limits.max_autofills_per_user`, enforced on the `ai_usage` insert); per-user daily quota (`AI_DAILY_LIMIT`, default 50) via `ai_usage`; inputs capped at 30k chars |
+| Prompt injection          | Inputs wrapped in tags and labelled untrusted; output must match a schema and pass validation                                                                                                                                    |
+| Bad output                | Validation failure returns `AI_BAD_OUTPUT` / `PARSE_FAILED`; nothing is stored                                                                                                                                                   |
 
 Known limits: the quota is checked before the call, so a burst of parallel requests can exceed it by a few; DNS names that resolve to private IPs are not re-checked after resolution (the function itself has no private network access).

@@ -134,6 +134,55 @@ describe('Tracker AI features (mocked supabase API)', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
+  const usage = (autofillsUsed: number) =>
+    vi.fn().mockResolvedValue({
+      data: {
+        applications: 0,
+        maxApplications: 500,
+        writesToday: 0,
+        maxWritesPerDay: 1000,
+        autofillsUsed,
+        maxAutofills: 3,
+      },
+      error: null,
+    })
+
+  it('shows the auto-fills left and hides the link box once they are used up', async () => {
+    const parseJobPosting = vi.fn().mockResolvedValue({ data: parsed, error: null })
+    render(<Tracker api={aiApi({ parseJobPosting, getUsage: usage(2) })} />)
+    fireEvent.click(await screen.findByText('+ Add application'))
+    expect(await screen.findByText(/1 of 3 free auto-fills left/)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Paste a job link'), { target: { value: 'https://jobs.example.com/3' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Auto-fill' }))
+    expect(await screen.findByText(/used all 3 free auto-fills/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Paste a job link')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Company *')).toHaveValue('Northwind')
+  })
+
+  it('keeps the manual form when the user has no auto-fills left', async () => {
+    const parseJobPosting = vi.fn()
+    render(<Tracker api={aiApi({ parseJobPosting, getUsage: usage(3) })} />)
+    fireEvent.click(await screen.findByText('+ Add application'))
+    expect(await screen.findByText(/used all 3 free auto-fills/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Paste a job link')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Company *')).toBeInTheDocument()
+    expect(parseJobPosting).not.toHaveBeenCalled()
+  })
+
+  it('switches to the manual form when the server says the limit is reached', async () => {
+    const parseJobPosting = vi.fn().mockResolvedValue({
+      data: null,
+      error: { code: 'AUTOFILL_LIMIT', message: "You've used all your free auto-fills." },
+    })
+    render(<Tracker api={aiApi({ parseJobPosting })} />)
+    fireEvent.click(await screen.findByText('+ Add application'))
+    fireEvent.change(screen.getByLabelText('Paste a job link'), { target: { value: 'https://jobs.example.com/4' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Auto-fill' }))
+    expect(await screen.findByText(/used all your free auto-fills/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Paste a job link')).not.toBeInTheDocument()
+  })
+
   it('analyzes fit and shows the score in the row and the detail panel', async () => {
     const base = createDemoApi(localStorage)
     await base.createApplication({

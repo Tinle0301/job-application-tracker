@@ -22,3 +22,12 @@ export async function overQuota(db: SupabaseClient): Promise<boolean> {
   if (error) return false
   return Number(data) >= DAILY_AI_LIMIT
 }
+
+export const AUTOFILL_LIMIT_MESSAGE = "You've used all your free auto-fills. Fill in the form yourself."
+
+/** Lifetime auto-fills the caller has left (backend/migrations/0006), or null if it can't be read. */
+export async function autofillsLeft(db: SupabaseClient): Promise<number | null> {
+  const { data, error } = await db.rpc('autofills_left')
+  if (error || typeof data !== 'number') return null
+  return data
+}

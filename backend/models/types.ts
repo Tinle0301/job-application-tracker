@@ -71,6 +71,9 @@ export interface Usage {
   maxApplications: number
   writesToday: number
   maxWritesPerDay: number
+  /** Successful AI auto-fills so far, against a lifetime cap (0 = no cap, e.g. demo mode). */
+  autofillsUsed: number
+  maxAutofills: number
 }
 
 export interface ServiceError {

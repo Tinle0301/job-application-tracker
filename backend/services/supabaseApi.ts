@@ -186,12 +186,16 @@ export function createSupabaseApi(db: SupabaseClient, options: { aiEnabled?: boo
         max_applications: number
         writes_today: number
         max_writes_per_day: number
+        autofills_used: number
+        max_autofills: number
       }
       return ok({
         applications: r.applications,
         maxApplications: r.max_applications,
         writesToday: r.writes_today,
         maxWritesPerDay: r.max_writes_per_day,
+        autofillsUsed: r.autofills_used,
+        maxAutofills: r.max_autofills,
       })
     },
 
