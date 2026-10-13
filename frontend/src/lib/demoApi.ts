@@ -44,6 +44,11 @@ const AI_UNAVAILABLE = fail(
   'AI features need the Supabase backend (the API key stays on the server). See docs/SETUP.md.',
 )
 
+const EMAIL_UNAVAILABLE = fail(
+  'EMAIL_UNAVAILABLE_IN_DEMO',
+  'Email sync needs the Supabase backend (Google access stays on the server). See docs/EMAIL_SYNC.md.',
+)
+
 const capReached = () =>
   fail(
     'APPLICATION_LIMIT',
@@ -186,5 +191,15 @@ export function createDemoApi(storage: Storage | null = safeLocalStorage()): Tra
     async analyzeFit() {
       return AI_UNAVAILABLE
     },
+
+    emailSyncEnabled: false,
+    getEmailConnection: async () => ok(null),
+    startEmailConnect: async () => EMAIL_UNAVAILABLE,
+    disconnectEmail: async () => EMAIL_UNAVAILABLE,
+    scanEmail: async () => EMAIL_UNAVAILABLE,
+    listEmailUpdates: async () => ok([]),
+    applyEmailUpdate: async () => EMAIL_UNAVAILABLE,
+    undoEmailUpdate: async () => EMAIL_UNAVAILABLE,
+    dismissEmailUpdate: async () => EMAIL_UNAVAILABLE,
   }
 }

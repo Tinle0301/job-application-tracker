@@ -10,6 +10,7 @@ import { ApplicationTable } from './ApplicationTable'
 import { ApplicationForm } from './ApplicationForm'
 import { ResumePanel } from './ResumePanel'
 import { UsageMeter } from './UsageMeter'
+import { EmailSync } from './EmailSync'
 
 type Tab = 'applications' | 'resume'
 
@@ -20,7 +21,7 @@ interface Props {
 }
 
 export function Tracker({ api, userEmail, onSignOut }: Props) {
-  const { apps, revision, loading, error, create, update, updateStatus, remove, importMany, setAnalysis } =
+  const { apps, revision, loading, error, create, update, updateStatus, remove, importMany, setAnalysis, reload } =
     useApplications(api)
   const [tab, setTab] = useState<Tab>('applications')
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
@@ -89,6 +90,7 @@ export function Tracker({ api, userEmail, onSignOut }: Props) {
         <>
           <StatsBar apps={apps} />
           <UsageMeter api={api} version={revision} />
+          {api.emailSyncEnabled && <EmailSync api={api} apps={apps} onStatusesChanged={reload} />}
           <Toolbar
             filters={filters}
             onChange={setFilters}

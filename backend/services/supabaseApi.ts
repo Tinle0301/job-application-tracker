@@ -13,6 +13,9 @@ import type {
   Resume,
   Status,
   StatusChange,
+  EmailConnection,
+  EmailScanResult,
+  EmailUpdate,
 } from '../models/types'
 import type { TrackerApi } from './api'
 import { fail, ok, toServiceError } from './result'
@@ -42,12 +45,12 @@ interface ApplicationRow {
   job_description: string
   created_at: string
   updated_at: string
-  status_history: { status: Status; changed_at: string }[]
+  status_history: { status: Status; changed_at: string; source?: 'manual' | 'email' }[]
   ai_analyses: AnalysisRow[]
 }
 
 const SELECT =
-  '*, status_history(status, changed_at), ai_analyses(id, score, matched_skills, missing_skills, summary, suggestions, model, created_at)'
+  '*, status_history(status, changed_at, source), ai_analyses(id, score, matched_skills, missing_skills, summary, suggestions, model, created_at)'
 
 export function toAnalysis(r: AnalysisRow): FitAnalysis {
   return {
@@ -64,7 +67,7 @@ export function toAnalysis(r: AnalysisRow): FitAnalysis {
 
 export function toApplication(row: ApplicationRow): Application {
   const history: StatusChange[] = (row.status_history ?? [])
-    .map((h) => ({ status: h.status, changedAt: h.changed_at }))
+    .map((h) => ({ status: h.status, changedAt: h.changed_at, source: h.source ?? 'manual' }))
     .sort((a, b) => a.changedAt.localeCompare(b.changedAt))
   const latest = [...(row.ai_analyses ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
   return {
@@ -99,8 +102,39 @@ export function toRow(input: ApplicationInput) {
   }
 }
 
+interface EmailUpdateRow {
+  id: string
+  application_id: string
+  from_address: string
+  subject: string
+  received_at: string
+  detected_status: Status
+  previous_status: Status
+  reason: string
+  state: EmailUpdate['state']
+}
+
+export function toEmailUpdate(r: EmailUpdateRow): EmailUpdate {
+  return {
+    id: r.id,
+    applicationId: r.application_id,
+    fromAddress: r.from_address,
+    subject: r.subject,
+    receivedAt: r.received_at,
+    detectedStatus: r.detected_status,
+    previousStatus: r.previous_status,
+    reason: r.reason,
+    state: r.state,
+  }
+}
+
 /** Maps edge-function failures (which carry our { error } body) to ServiceErrors. */
-async function invokeFunction<T>(db: SupabaseClient, name: string, body: Record<string, unknown>): Promise<Result<T>> {
+async function invokeFunction<T>(
+  db: SupabaseClient,
+  name: string,
+  body: Record<string, unknown>,
+  unavailable = 'The AI service is unavailable right now. Please try again.',
+): Promise<Result<T>> {
   const { data, error } = await db.functions.invoke(name, { body })
   if (error) {
     // FunctionsHttpError keeps the response; our functions always reply { data, error }.
@@ -113,13 +147,23 @@ async function invokeFunction<T>(db: SupabaseClient, name: string, body: Record<
         /* fall through */
       }
     }
-    return fail('AI_REQUEST_FAILED', 'The AI service is unavailable right now. Please try again.')
+    return fail('AI_REQUEST_FAILED', unavailable)
   }
   const payload = data as Result<T>
   return payload?.error ? fail(payload.error.code, payload.error.message) : ok(payload.data as T)
 }
 
-export function createSupabaseApi(db: SupabaseClient, options: { aiEnabled?: boolean } = {}): TrackerApi {
+const EMAIL_UNAVAILABLE = 'Email sync is unavailable right now. Please try again.'
+
+export function createSupabaseApi(
+  db: SupabaseClient,
+  options: { aiEnabled?: boolean; emailSyncEnabled?: boolean } = {},
+): TrackerApi {
+  const rpc = async (name: string, id: string): Promise<Result<null>> => {
+    const { error } = await db.rpc(name, { p_id: id })
+    return error ? { data: null, error: toServiceError(error, 'EMAIL_UPDATE_FAILED') } : ok(null)
+  }
+
   const one = async (query: PromiseLike<{ data: unknown; error: unknown }>): Promise<Result<Application>> => {
     const { data, error } = await query
     if (error) return { data: null, error: toServiceError(error, 'DATABASE_ERROR') }
@@ -223,5 +267,48 @@ export function createSupabaseApi(db: SupabaseClient, options: { aiEnabled?: boo
     async analyzeFit(applicationId) {
       return invokeFunction<FitAnalysis>(db, 'match-resume', { applicationId })
     },
+
+    emailSyncEnabled: options.emailSyncEnabled ?? false,
+
+    async getEmailConnection() {
+      const { data, error } = await db.rpc('my_email_connection').maybeSingle()
+      if (error) return { data: null, error: toServiceError(error, 'LOAD_FAILED') }
+      if (!data) return ok(null)
+      const r = data as {
+        email: string
+        status: EmailConnection['status']
+        last_scan_at: string | null
+        connected_at: string
+      }
+      return ok({ email: r.email, status: r.status, lastScanAt: r.last_scan_at, connectedAt: r.connected_at })
+    },
+
+    async startEmailConnect() {
+      return invokeFunction<{ url: string }>(db, 'email-connect', { action: 'start' }, EMAIL_UNAVAILABLE)
+    },
+
+    async disconnectEmail() {
+      return invokeFunction<null>(db, 'email-connect', { action: 'disconnect' }, EMAIL_UNAVAILABLE)
+    },
+
+    async scanEmail() {
+      return invokeFunction<EmailScanResult>(db, 'email-scan', {}, EMAIL_UNAVAILABLE)
+    },
+
+    async listEmailUpdates() {
+      const { data, error } = await db
+        .from('email_status_updates')
+        .select(
+          'id, application_id, from_address, subject, received_at, detected_status, previous_status, reason, state',
+        )
+        .order('received_at', { ascending: false })
+        .limit(50)
+      if (error) return { data: null, error: toServiceError(error, 'LOAD_FAILED') }
+      return ok((data as EmailUpdateRow[]).map(toEmailUpdate))
+    },
+
+    applyEmailUpdate: (id) => rpc('apply_email_update', id),
+    undoEmailUpdate: (id) => rpc('undo_email_update', id),
+    dismissEmailUpdate: (id) => rpc('dismiss_email_update', id),
   }
 }

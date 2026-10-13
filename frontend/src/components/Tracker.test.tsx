@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { Tracker } from './Tracker'
 import { createDemoApi } from '../lib/demoApi'
 import type { TrackerApi } from '@backend/services/api'
-import type { FitAnalysis, ParsedJob } from '@backend/models/types'
+import type { EmailUpdate, FitAnalysis, ParsedJob } from '@backend/models/types'
 
 describe('Tracker (demo mode)', () => {
   beforeEach(() => localStorage.clear())
@@ -223,5 +223,137 @@ describe('Tracker AI features (mocked supabase API)', () => {
     fireEvent.change(await screen.findByLabelText('Resume text'), { target: { value: 'Experience '.repeat(10) } })
     fireEvent.click(screen.getByRole('button', { name: 'Save resume' }))
     expect(await screen.findByText('Resume saved.')).toBeInTheDocument()
+  })
+})
+
+describe('Tracker email sync (mocked supabase API)', () => {
+  beforeEach(() => localStorage.clear())
+
+  async function withApp() {
+    const base = createDemoApi(localStorage)
+    const created = await base.createApplication({
+      company: 'Contoso',
+      role: 'SWE',
+      location: '',
+      url: '',
+      status: 'applied',
+      appliedOn: null,
+      salary: '',
+      notes: '',
+      jobDescription: '',
+    })
+    return { base, appId: created.data!.id }
+  }
+
+  const update = (over: Partial<EmailUpdate>): EmailUpdate => ({
+    id: 'u1',
+    applicationId: '',
+    fromAddress: 'talent@contoso.com',
+    subject: 'Interview invitation',
+    receivedAt: new Date().toISOString(),
+    detectedStatus: 'interviewing',
+    previousStatus: 'applied',
+    reason: 'Invites you to a phone screen',
+    state: 'applied',
+    ...over,
+  })
+
+  it('hides the email panel until VITE_ENABLE_EMAIL_SYNC is on', async () => {
+    render(<Tracker api={{ ...createDemoApi(localStorage), mode: 'supabase' }} />)
+    await screen.findByText('+ Add application')
+    expect(screen.queryByRole('region', { name: 'Email updates' })).not.toBeInTheDocument()
+  })
+
+  it('offers to connect Gmail and opens Google when clicked', async () => {
+    const startEmailConnect = vi.fn().mockResolvedValue({ data: null, error: { code: 'X', message: 'Not set up.' } })
+    render(
+      <Tracker api={{ ...createDemoApi(localStorage), mode: 'supabase', emailSyncEnabled: true, startEmailConnect }} />,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect Gmail' }))
+    expect(await screen.findByText('Not set up.')).toBeInTheDocument()
+    expect(startEmailConnect).toHaveBeenCalled()
+  })
+
+  it('checks a stale inbox on open, lists the change and undoes it', async () => {
+    const { base, appId } = await withApp()
+    let updates = [update({ applicationId: appId })]
+    const scanEmail = vi.fn(async () => {
+      await base.updateStatus(appId, 'interviewing')
+      return { data: { scanned: 4, matched: 1, applied: 1, suggested: 0, complete: true }, error: null }
+    })
+    const undoEmailUpdate = vi.fn(async () => {
+      await base.updateStatus(appId, 'applied')
+      updates = [{ ...updates[0], state: 'undone' }]
+      return { data: null, error: null }
+    })
+    const api = {
+      ...base,
+      mode: 'supabase' as const,
+      emailSyncEnabled: true,
+      getEmailConnection: vi.fn().mockResolvedValue({
+        data: { email: 'tin@gmail.com', status: 'connected', lastScanAt: null, connectedAt: '2026-10-01T00:00:00Z' },
+        error: null,
+      }),
+      scanEmail,
+      listEmailUpdates: vi.fn(async () => ({ data: updates, error: null })),
+      undoEmailUpdate,
+    }
+    render(<Tracker api={api} />)
+
+    expect(await screen.findByText('1 status updated.')).toBeInTheDocument()
+    expect(scanEmail).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.getByLabelText('Status for Contoso')).toHaveValue('interviewing'))
+    const panel = screen.getByRole('region', { name: 'Email updates' })
+    expect(within(panel).getByText(/Interview invitation/)).toBeInTheDocument()
+
+    fireEvent.click(within(panel).getByRole('button', { name: 'Undo Contoso update' }))
+    await waitFor(() => expect(screen.getByLabelText('Status for Contoso')).toHaveValue('applied'))
+    expect(undoEmailUpdate).toHaveBeenCalledWith('u1')
+    expect(within(panel).queryByText(/Interview invitation/)).not.toBeInTheDocument()
+  })
+
+  it('lets the user apply or dismiss a suggestion without scanning a fresh inbox', async () => {
+    const { base, appId } = await withApp()
+    const applyEmailUpdate = vi.fn().mockResolvedValue({ data: null, error: null })
+    const scanEmail = vi.fn()
+    const api = {
+      ...base,
+      mode: 'supabase' as const,
+      emailSyncEnabled: true,
+      getEmailConnection: vi.fn().mockResolvedValue({
+        data: { email: 'tin@gmail.com', status: 'connected', lastScanAt: new Date().toISOString(), connectedAt: '' },
+        error: null,
+      }),
+      scanEmail,
+      listEmailUpdates: vi.fn().mockResolvedValue({
+        data: [update({ applicationId: appId, state: 'suggested', detectedStatus: 'rejected' })],
+        error: null,
+      }),
+      applyEmailUpdate,
+    }
+    render(<Tracker api={api} />)
+    const panel = await screen.findByRole('region', { name: 'Email updates' })
+    expect(within(panel).getByText(/checked just now/)).toBeInTheDocument()
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Apply Contoso update' }))
+    await waitFor(() => expect(applyEmailUpdate).toHaveBeenCalledWith('u1'))
+    expect(scanEmail).not.toHaveBeenCalled()
+  })
+
+  it('asks to reconnect when Google access expired', async () => {
+    render(
+      <Tracker
+        api={{
+          ...createDemoApi(localStorage),
+          mode: 'supabase',
+          emailSyncEnabled: true,
+          getEmailConnection: vi.fn().mockResolvedValue({
+            data: { email: 'tin@gmail.com', status: 'needs_reconnect', lastScanAt: null, connectedAt: '' },
+            error: null,
+          }),
+        }}
+      />,
+    )
+    expect(await screen.findByRole('button', { name: 'Reconnect Gmail' })).toBeInTheDocument()
+    expect(screen.getByText(/Google access expired/)).toBeInTheDocument()
   })
 })

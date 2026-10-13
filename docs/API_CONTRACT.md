@@ -77,3 +77,29 @@ Returns `FitAnalysis`: `id`, `score` (0–100), `matchedSkills[]`, `missingSkill
 | `AI_NOT_CONFIGURED`      | 503     | `GEMINI_API_KEY` secret missing                           |
 | `NOT_SIGNED_IN`          | 401     | Missing or invalid JWT                                    |
 | `AI_UNAVAILABLE_IN_DEMO` | —       | Demo mode (no backend to hold the key)                    |
+
+## Email sync
+
+Off unless `emailSyncEnabled` (`VITE_ENABLE_EMAIL_SYNC=true`). See [EMAIL_SYNC.md](EMAIL_SYNC.md).
+
+| Method                   | Returns                   | Backed by                                  |
+| ------------------------ | ------------------------- | ------------------------------------------ |
+| `getEmailConnection()`   | `EmailConnection \| null` | `my_email_connection()`                    |
+| `startEmailConnect()`    | `{ url }`                 | `email-connect` `{ action: 'start' }`      |
+| `disconnectEmail()`      | `null`                    | `email-connect` `{ action: 'disconnect' }` |
+| `scanEmail()`            | `EmailScanResult`         | `email-scan`                               |
+| `listEmailUpdates()`     | `EmailUpdate[]`           | `email_status_updates`, newest 50          |
+| `applyEmailUpdate(id)`   | `null`                    | `apply_email_update()`                     |
+| `undoEmailUpdate(id)`    | `null`                    | `undo_email_update()`                      |
+| `dismissEmailUpdate(id)` | `null`                    | `dismiss_email_update()`                   |
+
+| Code                        | When                                                                     |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `EMAIL_NOT_CONFIGURED`      | A Google or token secret is missing on the server                        |
+| `EMAIL_NOT_CONNECTED`       | Scan without a connected Gmail                                           |
+| `EMAIL_RECONNECT`           | Google no longer accepts the saved access (7-day expiry in Testing mode) |
+| `EMAIL_SCAN_FAILED`         | Gmail or the model failed                                                |
+| `EMAIL_UPDATE_NOT_FOUND`    | Not the caller's update, or a suggestion already handled                 |
+| `EMAIL_UPDATE_NOT_APPLIED`  | Undo on an update that isn't applied                                     |
+| `EMAIL_UPDATE_STALE`        | Undo after the status was changed by hand                                |
+| `EMAIL_UNAVAILABLE_IN_DEMO` | Demo mode                                                                |

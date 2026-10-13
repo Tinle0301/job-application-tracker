@@ -10,6 +10,9 @@ export function useApplications(api: TrackerApi) {
   /** Bumps after every successful write (used to refresh the usage meter). */
   const [revision, setRevision] = useState(0)
 
+  /** Bumped to re-read the list after changes made elsewhere (e.g. email sync). */
+  const [reloads, setReloads] = useState(0)
+
   useEffect(() => {
     let cancelled = false
     api.listApplications().then((res) => {
@@ -21,7 +24,7 @@ export function useApplications(api: TrackerApi) {
     return () => {
       cancelled = true
     }
-  }, [api])
+  }, [api, reloads])
 
   /** Runs a call, surfaces its error message, and returns whether it succeeded. */
   const run = useCallback(async <T>(call: Promise<Result<T>>, onData: (data: T) => void): Promise<boolean> => {
@@ -44,6 +47,10 @@ export function useApplications(api: TrackerApi) {
     loading,
     error,
     clearError: () => setError(null),
+    reload: useCallback(() => {
+      setReloads((n) => n + 1)
+      setRevision((r) => r + 1)
+    }, []),
     create: (input: ApplicationInput) =>
       run(api.createApplication(input), (created) => setApps((prev) => [...prev, created])),
     update: (id: string, input: ApplicationInput) => run(api.updateApplication(id, input), replace),
