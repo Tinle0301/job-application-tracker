@@ -208,7 +208,7 @@ ${e.body.replace(/<\/?email\b/gi, '[email')}
 export const CONFIRM_SYSTEM = `You read emails a job seeker received and find the ones confirming that they submitted a job application.
 For each email:
 - confirmation: true only if the email confirms an application the candidate already submitted ("Thank you for applying", "We received your application", "Your application was sent to ..."). False for job alerts, recommended jobs, reminders to finish an application, account sign-ups, assessments, interview invitations, offers, rejections, newsletters and recruiter outreach.
-- company: the hiring company's name as the email gives it, without "Careers", "Recruiting" or "Talent Team". Never the job board or applicant-tracking system that sent the email (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Greenhouse, Lever, Workday, Ashby, iCIMS, SmartRecruiters, Jobvite, Workable) unless it is the employer. Empty if not stated.
+- company: the hiring company's name as the email gives it, without "Careers", "Recruiting" or "Talent Team". Never the job board or applicant-tracking system that sent the email (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Wellfound, Handshake, Greenhouse, Lever, Workday, Ashby, iCIMS, SmartRecruiters, Jobvite, Workable) unless it is the employer. Empty if not stated.
 - role: the job title applied for, as written, without requisition or job numbers. Empty if not stated.
 - location: where the job is, if stated; else empty.
 - confidence: 0 to 1, how sure you are that it is a confirmation and that the company and role are right.
