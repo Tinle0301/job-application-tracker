@@ -239,6 +239,12 @@ async function addFromConfirmations(
         if (!upd) continue
         if (action === 'apply' && !(await db.rpc('apply_email_update', { p_id: upd.id })).error) {
           app.status = 'applied'
+          // A wishlist entry has no applied date yet: use the confirmation's.
+          await db
+            .from('applications')
+            .update({ applied_on: localDate(email.receivedAt, ctx.timeZone) })
+            .eq('id', app.id)
+            .is('applied_on', null)
           result.applied++
         } else result.suggested++
         continue

@@ -17,7 +17,7 @@ Off until enabled: the panel only appears when the build has `VITE_ENABLE_EMAIL_
    - fetches their bodies (at most 30 per check) and asks Gemini, 10 at a time, whether each confirms a submitted application, and for which company (never the job board or ATS that sent it), role and location;
    - decides what to do (`decideNewApplication` in `supabase/functions/_shared/email.ts`):
      - **Added now:** the model is at least 75% sure, the email names both company and role, and no tracked application at that company has a similar title. Another role at a company you already track is a new application.
-     - **Duplicate:** a tracked application at the same company has a similar title (e.g. "Software Engineer" and "Software Engineer II, Backend"). Nothing is added; a Wishlist entry moves to Applied.
+     - **Duplicate:** a tracked application at the same company has a similar title (e.g. "Software Engineer" and "Software Engineer II, Backend"). Nothing is added; a Wishlist entry moves to Applied and gets the email's date as its applied date.
      - **Suggested:** the model is less sure, the role is missing, the title only partly matches a tracked one, or the matching application was already Rejected or Withdrawn before this email (a re-application). The user can fix the company and role, then tap **Add**, or **Dismiss**.
      - **Ignored:** not a confirmation. These emails still go through the status check below.
 
