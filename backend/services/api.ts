@@ -10,6 +10,9 @@ import type {
   Status,
   FitAnalysis,
   Usage,
+  EmailConnection,
+  EmailScanResult,
+  EmailUpdate,
 } from '../models/types'
 
 export interface TrackerApi {
@@ -30,4 +33,20 @@ export interface TrackerApi {
   parseJobPosting(source: { text?: string; url?: string }): Promise<Result<ParsedJob>>
   /** AI: score the default resume against an application's job description. */
   analyzeFit(applicationId: string): Promise<Result<FitAnalysis>>
+
+  /** True only when the email edge functions are deployed (VITE_ENABLE_EMAIL_SYNC=true). */
+  readonly emailSyncEnabled: boolean
+  /** The connected inbox, or null when none is connected. */
+  getEmailConnection(): Promise<Result<EmailConnection | null>>
+  /** Google's consent page for read-only Gmail access; the app navigates there. */
+  startEmailConnect(): Promise<Result<{ url: string }>>
+  disconnectEmail(): Promise<Result<null>>
+  /** Reads new job emails and updates statuses. */
+  scanEmail(): Promise<Result<EmailScanResult>>
+  /** Recent email updates, newest first. */
+  listEmailUpdates(): Promise<Result<EmailUpdate[]>>
+  /** Accepts a suggestion (or re-applies an undone update). */
+  applyEmailUpdate(id: string): Promise<Result<null>>
+  undoEmailUpdate(id: string): Promise<Result<null>>
+  dismissEmailUpdate(id: string): Promise<Result<null>>
 }

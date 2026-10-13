@@ -6,7 +6,9 @@ Migrations live in `backend/migrations` and run in order. Database columns are `
 auth.users ─┬─< applications ─┬─< status_history
             │                 └─< ai_analyses >── resumes
             ├─< resumes
-            └─< ai_usage
+            ├─< ai_usage
+            ├── email_connections
+            └─< email_status_updates >── applications
 ```
 
 ## applications (0001)
@@ -27,7 +29,7 @@ auth.users ─┬─< applications ─┬─< status_history
 
 ## status_history (0001, written by 0003 trigger)
 
-Append-only: `application_id`, `status`, `changed_at`. One row on insert, one more each time `status` actually changes. Users can read their own rows; nobody writes directly.
+Append-only: `application_id`, `status`, `changed_at`, `source` (`manual` | `email`, 0007) and `email_update_id` (the email that made the change). One row on insert, one more each time `status` actually changes. Users can read their own rows; nobody writes directly. The one exception to append-only: undoing an email update deletes that email's row (0007).
 
 ## resumes (0004)
 
@@ -39,11 +41,17 @@ Append-only: `application_id`, `status`, `changed_at`. One row on insert, one mo
 
 ## ai_usage (0004)
 
-One row per model call (`kind` = `parse` | `match`). `ai_calls_today()` counts the caller's rows in the last 24 hours for the daily quota.
+One row per model call (`kind` = `parse` | `match` | `email`). `ai_calls_today()` counts the caller's rows in the last 24 hours for the daily quota.
 
 ## app_limits, usage_counters (0005)
 
 `app_limits` is a single row of tunable limits (read-only to users). `usage_counters` keeps one row per user with a 1-minute and a 1-day write window; users can't read or change it. See [LIMITS.md](LIMITS.md).
+
+## email_connections, email_status_updates (0007)
+
+`email_connections`: one row per user with a connected Gmail: `email`, the AES-GCM encrypted `refresh_token_enc`, `status` (`connected` | `needs_reconnect`), `last_scan_at`. Users have **no** grants; they read the non-secret columns through `my_email_connection()`.
+
+`email_status_updates`: one row per email that changed or could change a status: `application_id`, Gmail `message_id` (unique per user), `from_address`, `subject`, `received_at`, `detected_status`, `previous_status`, `confidence`, `reason`, `state` (`applied` | `suggested` | `undone` | `dismissed`). Read-only to users; written by the `email-scan` function and changed only through the functions below. See [EMAIL_SYNC.md](EMAIL_SYNC.md).
 
 ## Row-level security (0002, 0004)
 
@@ -57,3 +65,7 @@ Every table has RLS enabled. All policies are scoped to the `authenticated` role
 | `pipeline_stats()`            | RPC: total, submitted, responded, interviewed, offers          |
 | `ai_calls_today()`            | RPC: caller's AI calls in the last 24 hours                    |
 | `touch_updated_at()`          | Trigger: bumps `resumes.updated_at`                            |
+| `my_email_connection()`       | RPC: the caller's Gmail address, status and last check (0007)  |
+| `apply_email_update(id)`      | RPC: moves the application to the email's status (0007)        |
+| `undo_email_update(id)`       | RPC: restores the previous status, drops the timeline row      |
+| `dismiss_email_update(id)`    | RPC: hides a suggestion                                        |
