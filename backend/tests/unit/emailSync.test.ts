@@ -261,6 +261,15 @@ describe('adding applications from confirmation emails', () => {
     expect(sameCompany('AB', 'AB Testing Co')).toBe(false)
     expect(roleSimilarity('Software Engineer', 'Software Engineer II, Backend')).toBe(1)
     expect(roleSimilarity('Data Analyst', 'Product Designer')).toBe(0)
+    // Program labels, years and job nouns don't make two jobs the same.
+    expect(
+      roleSimilarity(
+        'Formal Verification Engineer - New College Grad 2026',
+        'Systems Software Engineer - New College Grad 2026',
+      ),
+    ).toBe(0)
+    expect(roleSimilarity('Data Analyst', 'Data Analyst I')).toBe(1)
+    expect(roleSimilarity('Analyst', 'Analyst II')).toBe(1)
   })
 
   const conf = (over: Partial<Confirmation> = {}): Confirmation => ({
@@ -296,9 +305,10 @@ describe('adding applications from confirmation emails', () => {
       possibleDuplicate: tracked,
     })
     // Same company, partly matching title.
-    expect(decideNewApplication(conf({ company: 'Northwind', role: 'Senior Engineer, Platform' }), [tracked])).toEqual({
+    const platform = app({ role: 'Data Platform Engineer' })
+    expect(decideNewApplication(conf({ company: 'Northwind', role: 'Data Science Engineer' }), [platform])).toEqual({
       action: 'suggest',
-      possibleDuplicate: tracked,
+      possibleDuplicate: platform,
     })
     // Applying again after a rejection.
     const closed = app({ status: 'rejected', updatedAt: '2026-09-01T00:00:00.000Z' })

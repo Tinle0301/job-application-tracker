@@ -161,6 +161,7 @@ const LEGAL_SUFFIXES = new Set([
 
 /** Domains that send on behalf of many companies (ATS, job boards, webmail). */
 const SHARED_SENDER_DOMAINS = [
+  'wellfound.com',
   'greenhouse.io',
   'greenhouse-mail.io',
   'lever.co',
@@ -434,10 +435,60 @@ export function sameCompany(a: string, b: string): boolean {
   return short.join('').length >= 4 && containsPhrase(long.slice(0, short.length), short)
 }
 
-/** How alike two job titles are (0–1): the larger share of either title's words found in the other. */
+/**
+ * Words most titles share, which say little about which job it is: years and
+ * numbers, program labels ("New College Grad 2026") and job nouns. Without
+ * this, "Formal Verification Engineer - New College Grad 2026" and "Systems
+ * Software Engineer - New College Grad 2026" look like the same job.
+ */
+const GENERIC_ROLE_WORDS = new Set([
+  'college',
+  'university',
+  'graduate',
+  'early',
+  'career',
+  'entry',
+  'level',
+  'junior',
+  'senior',
+  'jr',
+  'sr',
+  'staff',
+  'lead',
+  'principal',
+  'remote',
+  'hybrid',
+  'onsite',
+  'us',
+  'usa',
+  'full',
+  'part',
+  'time',
+  'contract',
+  'intern',
+  'internship',
+  'engineer',
+  'engineering',
+  'developer',
+  'analyst',
+  'manager',
+  'specialist',
+  'associate',
+  'coordinator',
+  'representative',
+])
+
+/** The words of a title that tell jobs apart (falls back to all words when only generic ones are left). */
+function roleCore(role: string): string[] {
+  const all = words(role).filter((w) => !ROLE_STOPWORDS.has(w) && !/^\d+$/.test(w))
+  const core = all.filter((w) => !GENERIC_ROLE_WORDS.has(w))
+  return core.length ? core : all
+}
+
+/** How alike two job titles are (0–1): the larger share of either title's distinctive words found in the other. */
 export function roleSimilarity(a: string, b: string): number {
-  const wa = words(a).filter((w) => !ROLE_STOPWORDS.has(w))
-  const wb = words(b).filter((w) => !ROLE_STOPWORDS.has(w))
+  const wa = roleCore(a)
+  const wb = roleCore(b)
   if (!wa.length || !wb.length) return 0
   const share = (x: string[], y: string[]) => x.filter((w) => y.includes(w)).length / x.length
   return Math.max(share(wa, wb), share(wb, wa))
