@@ -1,16 +1,23 @@
 // email-scan — reads recent job emails from the user's connected Gmail and
 // updates application statuses (docs/EMAIL_SYNC.md).
-//   POST {} with the user's JWT        → scans that user's inbox now
-//   POST {} with x-scan-secret header  → scans every connected inbox (for a schedule)
-// Returns { data: { scanned, matched, applied, suggested, complete }, error }.
+//   POST { timeZone? } with the user's JWT → scans that user's inbox now
+//   POST {} with x-scan-secret header      → scans every connected inbox (for a schedule)
+// Each scan first adds applications from "thanks for applying" emails about
+// jobs that aren't tracked yet, then updates the statuses of tracked ones.
+// Returns { data: { scanned, matched, applied, suggested, added, toAdd, complete }, error }.
 // Deployed with verify_jwt = false so a scheduled call can authenticate with
 // the shared secret alone; user calls are checked with getUser() below.
 import { decryptToken } from '../_shared/crypto.ts'
 import {
   FIRST_SCAN_DAYS,
   SCAN_OVERLAP_SECONDS,
+  confirmationQuery,
+  decideNewApplication,
   decideUpdate,
+  gmailLink,
   gmailQuery,
+  localDate,
+  looksLikeConfirmation,
   matchApplication,
   summarizeMessage,
   type EmailSummary,
@@ -19,7 +26,16 @@ import {
 import { getMessage, GoogleAuthError, listMessageIds, refreshAccessToken, type GoogleOAuth } from '../_shared/gmail.ts'
 import { fail, ok, preflight } from '../_shared/http.ts'
 import { callLlmTool, DEFAULT_MODEL, LlmError } from '../_shared/llm.ts'
-import { EMAIL_SYSTEM, EMAIL_TOOL, emailUserMessage, validateEmailStages } from '../_shared/prompts.ts'
+import {
+  CONFIRM_SYSTEM,
+  CONFIRM_TOOL,
+  confirmUserMessage,
+  EMAIL_SYSTEM,
+  EMAIL_TOOL,
+  emailUserMessage,
+  validateConfirmations,
+  validateEmailStages,
+} from '../_shared/prompts.ts'
 import { adminClient, currentUser, DAILY_AI_LIMIT, userClient } from '../_shared/supabase.ts'
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 
@@ -33,6 +49,10 @@ interface ScanResult {
   matched: number
   applied: number
   suggested: number
+  /** Applications added from confirmation emails. */
+  added: number
+  /** Confirmation emails waiting for the user to add or dismiss. */
+  toAdd: number
   /** False when a limit cut the scan short; the next scan picks up the rest. */
   complete: boolean
 }
@@ -74,14 +94,181 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
   return out
 }
 
-async function scanUser(
+type Settings = NonNullable<ReturnType<typeof settings>>
+
+/** False once today's AI quota is used up. */
+async function aiQuotaLeft(db: SupabaseClient, userId: string): Promise<boolean> {
+  const { count } = await db
+    .from('ai_usage')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .gt('created_at', new Date(Date.now() - 86400_000).toISOString())
+  return (count ?? 0) < DAILY_AI_LIMIT
+}
+
+/** One model call; null when the model is rate limited (the scan stops and resumes next time). */
+async function ask(
   db: SupabaseClient,
   userId: string,
-  cfg: NonNullable<ReturnType<typeof settings>>,
-): Promise<ScanResult> {
+  cfg: Settings,
+  prompt: { system: string; user: string; tool: typeof EMAIL_TOOL | typeof CONFIRM_TOOL },
+): Promise<{ input: unknown } | null> {
+  try {
+    const { input } = await callLlmTool({ apiKey: cfg.apiKey, model: cfg.model, ...prompt, maxTokens: 2000 })
+    await db.from('ai_usage').insert({ user_id: userId, kind: 'email' })
+    return { input }
+  } catch (e) {
+    if (e instanceof LlmError && e.status === 429) return null
+    throw e
+  }
+}
+
+const fromLine = (e: EmailSummary) => (e.fromName ? `${e.fromName} <${e.fromAddress}>` : e.fromAddress)
+
+/**
+ * Adds applications from "thanks for applying" emails about jobs that aren't
+ * tracked yet. Returns false when a limit cut it short.
+ */
+async function addFromConfirmations(
+  db: SupabaseClient,
+  userId: string,
+  cfg: Settings,
+  ctx: { accessToken: string; account: string; since: number; timeZone?: string },
+  apps: TrackedApplication[],
+  result: ScanResult,
+): Promise<boolean> {
+  const ids = await listMessageIds(ctx.accessToken, confirmationQuery(ctx.since), MAX_MESSAGES)
+  if (!ids.length) return true
+  const { data: seenRows } = await db
+    .from('email_new_applications')
+    .select('message_id')
+    .eq('user_id', userId)
+    .in('message_id', ids)
+  const seen = new Set((seenRows ?? []).map((r) => r.message_id as string))
+
+  const heads = await mapLimit(
+    ids.filter((id) => !seen.has(id)),
+    5,
+    async (id) => summarizeMessage(await getMessage(ctx.accessToken, id, 'metadata'), false),
+  )
+  const candidates = heads
+    .filter((h) => h.fromAddress !== ctx.account && looksLikeConfirmation(h))
+    .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt)) // oldest first, so a repeat confirmation is a duplicate
+  const complete = candidates.length <= MAX_CLASSIFIED
+  const toRead = candidates.slice(0, MAX_CLASSIFIED)
+  await mapLimit(toRead, 5, async (e) => {
+    e.body = summarizeMessage(await getMessage(ctx.accessToken, e.id, 'full')).body
+  })
+
+  for (let i = 0; i < toRead.length; i += BATCH) {
+    if (!(await aiQuotaLeft(db, userId))) return false
+    const batch = toRead.slice(i, i + BATCH)
+    const answer = await ask(db, userId, cfg, {
+      system: CONFIRM_SYSTEM,
+      user: confirmUserMessage(
+        batch.map((e) => ({
+          id: e.id,
+          from: fromLine(e),
+          subject: e.subject,
+          date: e.receivedAt,
+          body: e.body || e.snippet,
+        })),
+      ),
+      tool: CONFIRM_TOOL,
+    })
+    if (!answer) return false
+    const found = validateConfirmations(
+      answer.input,
+      batch.map((e) => e.id),
+    )
+
+    for (const c of found) {
+      const email = batch.find((e) => e.id === c.id)!
+      const decision = decideNewApplication({ ...c, receivedAt: email.receivedAt }, apps)
+      // Not a confirmation: keep only the id, and let the status pass read it.
+      const row =
+        decision.action === 'ignore'
+          ? { message_id: email.id, received_at: email.receivedAt, state: 'ignored' }
+          : {
+              message_id: email.id,
+              from_address: email.fromAddress.slice(0, 320),
+              subject: email.subject.slice(0, 500),
+              received_at: email.receivedAt,
+              applied_on: localDate(email.receivedAt, ctx.timeZone),
+              link: gmailLink(email.id, ctx.account),
+              company: c.company,
+              role: c.role,
+              location: c.location,
+              confidence: c.confidence,
+              reason: c.reason,
+              state: decision.action === 'duplicate' ? 'duplicate' : 'suggested',
+              application_id: decision.action === 'duplicate' ? decision.application.id : null,
+            }
+      const { data: saved, error } = await db
+        .from('email_new_applications')
+        .upsert({ user_id: userId, ...row }, { onConflict: 'user_id,message_id', ignoreDuplicates: true })
+        .select('id')
+        .maybeSingle()
+      if (error || !saved) continue
+
+      if (decision.action === 'duplicate') {
+        // Already tracked: a wishlist entry moves to applied; anything else stays as it is.
+        const app = decision.application
+        if (app.status !== 'wishlist') continue
+        const action = decideUpdate(app.status, 'applied', c.confidence, false)
+        const { data: upd } = await db
+          .from('email_status_updates')
+          .upsert(
+            {
+              user_id: userId,
+              application_id: app.id,
+              message_id: email.id,
+              from_address: email.fromAddress.slice(0, 320),
+              subject: email.subject.slice(0, 500),
+              received_at: email.receivedAt,
+              detected_status: 'applied',
+              previous_status: 'wishlist',
+              confidence: c.confidence,
+              reason: c.reason,
+              state: 'suggested',
+            },
+            { onConflict: 'user_id,message_id', ignoreDuplicates: true },
+          )
+          .select('id')
+          .maybeSingle()
+        if (!upd) continue
+        if (action === 'apply' && !(await db.rpc('apply_email_update', { p_id: upd.id })).error) {
+          app.status = 'applied'
+          result.applied++
+        } else result.suggested++
+        continue
+      }
+
+      if (decision.action === 'create') {
+        const { data: appId, error: addError } = await db.rpc('add_email_application', { p_id: saved.id })
+        if (!addError && appId) {
+          // Later emails in this scan see it, so a second confirmation is a duplicate.
+          apps.push({
+            id: appId as string,
+            company: c.company,
+            role: c.role,
+            status: 'applied',
+            updatedAt: new Date().toISOString(),
+          })
+          result.added++
+          continue
+        }
+      }
+      if (decision.action !== 'ignore') result.toAdd++
+    }
+  }
+  return complete
+}
+
+async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZone?: string): Promise<ScanResult> {
   const { data: conn } = await db
     .from('email_connections')
-    .select('email, refresh_token_enc, status, last_scan_at')
+    .select('email, refresh_token_enc, status, last_scan_at, confirmations_scanned_at')
     .eq('user_id', userId)
     .maybeSingle()
   if (!conn) throw new ScanError(400, 'EMAIL_NOT_CONNECTED', 'Connect your Gmail first.')
@@ -102,12 +289,18 @@ async function scanUser(
   }
 
   const startedAt = new Date()
-  const result: ScanResult = { scanned: 0, matched: 0, applied: 0, suggested: 0, complete: true }
+  const result: ScanResult = { scanned: 0, matched: 0, applied: 0, suggested: 0, added: 0, toAdd: 0, complete: true }
+  let confirmationsComplete = true
   const finish = async () => {
-    if (result.complete)
-      await db.from('email_connections').update({ last_scan_at: startedAt.toISOString() }).eq('user_id', userId)
+    const done: Record<string, string> = {}
+    if (confirmationsComplete) done.confirmations_scanned_at = startedAt.toISOString()
+    if (result.complete) done.last_scan_at = startedAt.toISOString()
+    if (Object.keys(done).length) await db.from('email_connections').update(done).eq('user_id', userId)
+    result.complete &&= confirmationsComplete
     return result
   }
+  const sinceFor = (last: string | null) =>
+    last ? new Date(last).getTime() / 1000 - SCAN_OVERLAP_SECONDS : startedAt.getTime() / 1000 - FIRST_SCAN_DAYS * 86400
 
   const { data: appRows, error: appError } = await db
     .from('applications')
@@ -121,24 +314,36 @@ async function scanUser(
     status: a.status,
     updatedAt: a.updated_at,
   }))
+
+  const own = conn.email.toLowerCase()
+  confirmationsComplete = await addFromConfirmations(
+    db,
+    userId,
+    cfg,
+    { accessToken, account: own, since: sinceFor(conn.confirmations_scanned_at), timeZone },
+    apps,
+    result,
+  )
   if (!apps.length) return await finish()
 
-  const since = conn.last_scan_at
-    ? new Date(conn.last_scan_at).getTime() / 1000 - SCAN_OVERLAP_SECONDS
-    : startedAt.getTime() / 1000 - FIRST_SCAN_DAYS * 86400
-  const ids = await listMessageIds(accessToken, gmailQuery(since), MAX_MESSAGES)
+  const ids = await listMessageIds(accessToken, gmailQuery(sinceFor(conn.last_scan_at)), MAX_MESSAGES)
   result.scanned = ids.length
   if (!ids.length) return await finish()
 
-  const { data: seenRows } = await db
-    .from('email_status_updates')
-    .select('message_id')
-    .eq('user_id', userId)
-    .in('message_id', ids)
-  const seen = new Set((seenRows ?? []).map((r) => r.message_id as string))
+  // Skip emails already handled here or as a confirmation (those that turned
+  // out not to be confirmations still get read for a status change).
+  const [{ data: seenRows }, { data: confirmedRows }] = await Promise.all([
+    db.from('email_status_updates').select('message_id').eq('user_id', userId).in('message_id', ids),
+    db
+      .from('email_new_applications')
+      .select('message_id')
+      .eq('user_id', userId)
+      .neq('state', 'ignored')
+      .in('message_id', ids),
+  ])
+  const seen = new Set([...(seenRows ?? []), ...(confirmedRows ?? [])].map((r) => r.message_id as string))
 
   // Headers and snippet first; only matched emails get their body fetched.
-  const own = conn.email.toLowerCase()
   const heads = await mapLimit(
     ids.filter((id) => !seen.has(id)),
     5,
@@ -156,51 +361,37 @@ async function scanUser(
     m.email.body = summarizeMessage(await getMessage(accessToken, m.email.id, 'full')).body
   })
 
-  const statusOf = new Map(apps.map((a) => [a.id, a.status]))
+  const statusOf = new Map<string, TrackedApplication['status']>(apps.map((a) => [a.id, a.status]))
   for (let i = 0; i < toRead.length; i += BATCH) {
-    const { count } = await db
-      .from('ai_usage')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .gt('created_at', new Date(Date.now() - 86400_000).toISOString())
-    if ((count ?? 0) >= DAILY_AI_LIMIT) {
+    if (!(await aiQuotaLeft(db, userId))) {
       result.complete = false
       break
     }
 
     const batch = toRead.slice(i, i + BATCH)
-    let stages
-    try {
-      const { input } = await callLlmTool({
-        apiKey: cfg.apiKey,
-        model: cfg.model,
-        system: EMAIL_SYSTEM,
-        user: emailUserMessage(
-          batch.map(({ email, match }) => ({
-            id: email.id,
-            company: match.application.company,
-            role: match.application.role,
-            from: email.fromName ? `${email.fromName} <${email.fromAddress}>` : email.fromAddress,
-            subject: email.subject,
-            date: email.receivedAt,
-            body: email.body || email.snippet,
-          })),
-        ),
-        tool: EMAIL_TOOL,
-        maxTokens: 2000,
-      })
-      stages = validateEmailStages(
-        input,
-        batch.map((b) => b.email.id),
-      )
-    } catch (e) {
-      if (e instanceof LlmError && e.status === 429) {
-        result.complete = false
-        break
-      }
-      throw e
+    const answer = await ask(db, userId, cfg, {
+      system: EMAIL_SYSTEM,
+      user: emailUserMessage(
+        batch.map(({ email, match }) => ({
+          id: email.id,
+          company: match.application.company,
+          role: match.application.role,
+          from: fromLine(email),
+          subject: email.subject,
+          date: email.receivedAt,
+          body: email.body || email.snippet,
+        })),
+      ),
+      tool: EMAIL_TOOL,
+    })
+    if (!answer) {
+      result.complete = false
+      break
     }
-    await db.from('ai_usage').insert({ user_id: userId, kind: 'email' })
+    const stages = validateEmailStages(
+      answer.input,
+      batch.map((b) => b.email.id),
+    )
 
     for (const stage of stages) {
       const m = batch.find((b) => b.email.id === stage.id)!
@@ -267,13 +458,15 @@ Deno.serve(async (req) => {
   if (given !== null) {
     if (!secret || secret.length < 32 || given !== secret) return fail(401, 'BAD_SECRET', 'Wrong scan secret.')
     const { data: users } = await db.from('email_connections').select('user_id').eq('status', 'connected')
-    const summary = { users: 0, applied: 0, suggested: 0, failed: 0 }
+    const summary = { users: 0, applied: 0, suggested: 0, added: 0, toAdd: 0, failed: 0 }
     for (const u of users ?? []) {
       try {
         const r = await scanUser(db, u.user_id, cfg)
         summary.users++
         summary.applied += r.applied
         summary.suggested += r.suggested
+        summary.added += r.added
+        summary.toAdd += r.toAdd
       } catch {
         summary.failed++
       }
@@ -283,8 +476,10 @@ Deno.serve(async (req) => {
 
   const userId = await currentUser(userClient(req))
   if (!userId) return fail(401, 'NOT_SIGNED_IN', 'Sign in to scan your email.')
+  const body = (await req.json().catch(() => ({}))) as { timeZone?: unknown }
+  const timeZone = typeof body.timeZone === 'string' ? body.timeZone.slice(0, 64) : undefined
   try {
-    return ok(await scanUser(db, userId, cfg))
+    return ok(await scanUser(db, userId, cfg, timeZone))
   } catch (e) {
     return errorResponse(e)
   }

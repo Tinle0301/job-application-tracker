@@ -53,19 +53,26 @@ One row per model call (`kind` = `parse` | `match` | `email`). `ai_calls_today()
 
 `email_status_updates`: one row per email that changed or could change a status: `application_id`, Gmail `message_id` (unique per user), `from_address`, `subject`, `received_at`, `detected_status`, `previous_status`, `confidence`, `reason`, `state` (`applied` | `suggested` | `undone` | `dismissed`). Read-only to users; written by the `email-scan` function and changed only through the functions below. See [EMAIL_SYNC.md](EMAIL_SYNC.md).
 
+## email_new_applications (0008)
+
+One row per confirmation-looking email the scan read: Gmail `message_id` (unique per user), `from_address`, `subject`, `received_at`, `applied_on` (the email's date in the user's time zone), `link` (opens it in Gmail), the `company`, `role` and `location` the model read, `confidence`, `reason`, `state` (`created` | `suggested` | `undone` | `dismissed` | `duplicate` | `ignored`) and `application_id` (the application it added, or the tracked one it duplicates). `ignored` rows keep only the message id. Read-only to users. `email_connections.confirmations_scanned_at` is the confirmation search's own cursor. See [EMAIL_SYNC.md](EMAIL_SYNC.md).
+
 ## Row-level security (0002, 0004)
 
 Every table has RLS enabled. All policies are scoped to the `authenticated` role with `user_id = auth.uid()` (or, for `status_history`, ownership of the parent application). `backend/tests/rls_check.sql` proves cross-user reads, updates and inserts fail.
 
 ## Functions (0003, 0004)
 
-| Function                      | Purpose                                                        |
-| ----------------------------- | -------------------------------------------------------------- |
-| `track_application_changes()` | Trigger: history on insert / status change, bumps `updated_at` |
-| `pipeline_stats()`            | RPC: total, submitted, responded, interviewed, offers          |
-| `ai_calls_today()`            | RPC: caller's AI calls in the last 24 hours                    |
-| `touch_updated_at()`          | Trigger: bumps `resumes.updated_at`                            |
-| `my_email_connection()`       | RPC: the caller's Gmail address, status and last check (0007)  |
-| `apply_email_update(id)`      | RPC: moves the application to the email's status (0007)        |
-| `undo_email_update(id)`       | RPC: restores the previous status, drops the timeline row      |
-| `dismiss_email_update(id)`    | RPC: hides a suggestion                                        |
+| Function                                     | Purpose                                                         |
+| -------------------------------------------- | --------------------------------------------------------------- |
+| `track_application_changes()`                | Trigger: history on insert / status change, bumps `updated_at`  |
+| `pipeline_stats()`                           | RPC: total, submitted, responded, interviewed, offers           |
+| `ai_calls_today()`                           | RPC: caller's AI calls in the last 24 hours                     |
+| `touch_updated_at()`                         | Trigger: bumps `resumes.updated_at`                             |
+| `my_email_connection()`                      | RPC: the caller's Gmail address, status and last check (0007)   |
+| `apply_email_update(id)`                     | RPC: moves the application to the email's status (0007)         |
+| `undo_email_update(id)`                      | RPC: restores the previous status, drops the timeline row       |
+| `dismiss_email_update(id)`                   | RPC: hides a suggestion                                         |
+| `add_email_application(id, company?, role?)` | RPC: adds the application a confirmation email describes (0008) |
+| `undo_email_application(id)`                 | RPC: deletes it again while it is still at Applied              |
+| `dismiss_email_application(id)`              | RPC: hides a suggested application                              |

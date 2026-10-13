@@ -1,28 +1,43 @@
 # Email sync (Gmail)
 
-Connect the Gmail account you apply from, and the tracker moves applications along when the emails arrive: an assessment invite, an interview invite, an offer or a rejection. Every change shows in the application's timeline as **from email** and can be undone.
+Connect the Gmail account you apply from, and the tracker fills itself in:
+
+- **New applications.** When a company confirms you applied ("Thanks for applying", "We received your application", LinkedIn's "Your application was sent to …"), the job is added as **Applied** on the day the email arrived, with a link to the email in its notes.
+- **Status changes.** Applications move along when an assessment invite, an interview invite, an offer or a rejection arrives. Every change shows in the application's timeline as **from email**.
+
+Anything the tracker adds or changes can be undone.
 
 Off until enabled: the panel only appears when the build has `VITE_ENABLE_EMAIL_SYNC=true`.
 
 ## How it works
 
 1. **Connect.** The app asks `email-connect` for Google's consent URL and sends the user there. Google asks for one permission: _read your email_ (`gmail.readonly`; the app can never send, delete or change mail). Google redirects back to `email-connect`, which exchanges the code for a refresh token, encrypts it (AES-GCM, key in the `EMAIL_TOKEN_KEY` secret) and stores it in `email_connections`. Users have no grants on that table; the browser only ever sees the address and the last check time (`my_email_connection()`).
-2. **Check.** `email-scan` runs when the user clicks **Check inbox**, automatically when the app opens and the last check is more than 6 hours old, and (optionally) on a schedule for everyone. It:
+2. **Check.** `email-scan` runs when the user clicks **Check inbox**, automatically when the app opens and the last check is more than 6 hours old, and (optionally) on a schedule for everyone. It first looks for new applications:
+   - searches Gmail for confirmation phrases since the last check (first time: the last 30 days), at most 100 messages, and keeps those whose subject or preview reads like a confirmation;
+   - fetches their bodies (at most 30 per check) and asks Gemini, 10 at a time, whether each confirms a submitted application, and for which company (never the job board or ATS that sent it), role and location;
+   - decides what to do (`decideNewApplication` in `supabase/functions/_shared/email.ts`):
+     - **Added now:** the model is at least 75% sure, the email names both company and role, and no tracked application at that company has a similar title. Another role at a company you already track is a new application.
+     - **Duplicate:** a tracked application at the same company has a similar title (e.g. "Software Engineer" and "Software Engineer II, Backend"). Nothing is added; a Wishlist entry moves to Applied.
+     - **Suggested:** the model is less sure, the role is missing, the title only partly matches a tracked one, or the matching application was already Rejected or Withdrawn before this email (a re-application). The user can fix the company and role, then tap **Add**, or **Dismiss**.
+     - **Ignored:** not a confirmation. These emails still go through the status check below.
+
+   Then it updates statuses:
    - searches Gmail for job-related mail since the last check (first time: the last 30 days), at most 100 messages;
    - reads only the sender, subject and snippet of each, and matches them to tracked applications by company (the sender's own domain, the sender name, the subject, then the snippet). Emails from applicant-tracking systems (Greenhouse, Lever, Workday, …) match by name. Emails that mention three or more tracked companies (job alerts, digests) are skipped;
    - fetches the body of matched emails only (at most 30 per check) and asks Gemini, 10 at a time, which stage each one shows: applied, assessment, interviewing, offer, rejected, or none;
    - decides what to do (`decideUpdate` in `supabase/functions/_shared/email.ts`).
+
 3. **Decide.**
    - **Applied now:** a forward move (Applied → Assessment → Interviewing → Offer) or a rejection, when the model is at least 75% sure and the email clearly belongs to one application.
    - **Suggested:** anything less certain, an email that fits two applications at the same company equally well, news about an application already marked Rejected or Withdrawn, or a rejection after an offer. The user taps **Apply** or **Dismiss**.
    - **Ignored:** no change, or a step backwards (a late "we received your application" after an interview invite).
-4. **Undo.** `undo_email_update()` puts the previous status back and deletes the email's row from the timeline, so a wrong guess doesn't count in the pipeline stats. If the status was changed by hand after the email, undo is refused and the user sets it by hand.
+4. **Undo.** For an added application, `undo_email_application()` deletes it, as long as it is still at Applied (once it has moved on, delete it by hand). For a status change, `undo_email_update()` puts the previous status back and deletes the email's row from the timeline, so a wrong guess doesn't count in the pipeline stats. If the status was changed by hand after the email, undo is refused and the user sets it by hand.
 
 Each Gemini call counts toward the daily AI limit (`AI_DAILY_LIMIT`, shared with auto-fill and resume match). When a check hits a limit it stops early, keeps the last check time where it was, and the next check continues.
 
 ## What is stored
 
-Only for emails that changed or could change a status: the Gmail message id, sender address, subject, date, detected stage, the model's confidence and a one-line reason (`email_status_updates`). Email bodies are never stored. Unmatched emails leave no trace.
+Only for emails that changed or could change a status: the Gmail message id, sender address, subject, date, detected stage, the model's confidence and a one-line reason (`email_status_updates`). For confirmation emails: the same, plus the company, role, location and a link to the email (`email_new_applications`); confirmation-looking emails that turned out not to be confirmations keep only their message id, so they aren't read twice. Email bodies are never stored. Other emails leave no trace.
 
 **Disconnect** revokes the token at Google and deletes it. Status changes already made stay.
 
@@ -56,7 +71,7 @@ You need: a Google account, the Supabase project from [SETUP.md](SETUP.md), the 
 
 ### 2. Supabase
 
-1. In the SQL editor, run `backend/migrations/0007_email_sync.sql` (after 0001–0006).
+1. In the SQL editor, run `backend/migrations/0007_email_sync.sql` and then `0008_email_new_applications.sql` (after 0001–0006). If you already ran 0007, run 0008 and redeploy `email-scan`; the next check looks back 30 days for confirmations.
 2. Set the secrets (never in `.env` or any `VITE_*` variable):
 
    ```bash
@@ -103,10 +118,12 @@ The secret is stored in the cron job; anyone with SQL access to the project can 
 
 ## Troubleshooting
 
-| What you see                               | Why / fix                                                                                                       |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| Google says `redirect_uri_mismatch`        | The redirect URI in step 1.6 must match `https://<project-ref>.supabase.co/functions/v1/email-connect` exactly. |
-| Google says the app is blocked / no access | Your Gmail isn't in **Audience → Test users**.                                                                  |
-| _Email sync is not configured_             | A secret from step 2.2 (or `GEMINI_API_KEY`) is missing; set it and redeploy both functions.                    |
-| _Google access expired_                    | Normal in Testing mode every 7 days, or access was removed in your Google account. Click **Reconnect Gmail**.   |
-| A status moved wrongly                     | Click **Undo** next to it in the email panel.                                                                   |
+| What you see                               | Why / fix                                                                                                         |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Google says `redirect_uri_mismatch`        | The redirect URI in step 1.6 must match `https://<project-ref>.supabase.co/functions/v1/email-connect` exactly.   |
+| Google says the app is blocked / no access | Your Gmail isn't in **Audience → Test users**.                                                                    |
+| _Email sync is not configured_             | A secret from step 2.2 (or `GEMINI_API_KEY`) is missing; set it and redeploy both functions.                      |
+| _Google access expired_                    | Normal in Testing mode every 7 days, or access was removed in your Google account. Click **Reconnect Gmail**.     |
+| A status moved wrongly                     | Click **Undo** next to it in the email panel.                                                                     |
+| A job was added that you didn't apply to   | Click **Undo** next to it in the email panel (under _New applications from email_).                               |
+| A confirmation wasn't picked up            | Only emails from the last 30 days (first check) are read. Add it by hand, or check its subject is a confirmation. |

@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { Tracker } from './Tracker'
 import { createDemoApi } from '../lib/demoApi'
 import type { TrackerApi } from '@backend/services/api'
-import type { EmailUpdate, FitAnalysis, ParsedJob } from '@backend/models/types'
+import type { EmailApplication, EmailUpdate, FitAnalysis, ParsedJob } from '@backend/models/types'
 
 describe('Tracker (demo mode)', () => {
   beforeEach(() => localStorage.clear())
@@ -279,7 +279,10 @@ describe('Tracker email sync (mocked supabase API)', () => {
     let updates = [update({ applicationId: appId })]
     const scanEmail = vi.fn(async () => {
       await base.updateStatus(appId, 'interviewing')
-      return { data: { scanned: 4, matched: 1, applied: 1, suggested: 0, complete: true }, error: null }
+      return {
+        data: { scanned: 4, matched: 1, applied: 1, suggested: 0, added: 0, toAdd: 0, complete: true },
+        error: null,
+      }
     })
     const undoEmailUpdate = vi.fn(async () => {
       await base.updateStatus(appId, 'applied')
@@ -337,6 +340,105 @@ describe('Tracker email sync (mocked supabase API)', () => {
     fireEvent.click(await within(panel).findByRole('button', { name: 'Apply Contoso update' }))
     await waitFor(() => expect(applyEmailUpdate).toHaveBeenCalledWith('u1'))
     expect(scanEmail).not.toHaveBeenCalled()
+  })
+
+  const found = (over: Partial<EmailApplication>): EmailApplication => ({
+    id: 'n1',
+    applicationId: null,
+    fromAddress: 'no-reply@greenhouse.io',
+    subject: 'Thanks for applying to Fabrikam',
+    receivedAt: new Date().toISOString(),
+    link: 'https://mail.google.com/mail/?authuser=tin%40gmail.com#all/m9',
+    company: 'Fabrikam',
+    role: 'Data Analyst',
+    reason: 'Confirms your application was received',
+    state: 'suggested',
+    ...over,
+  })
+
+  it('adds applications found in confirmation emails and can undo one', async () => {
+    const base = createDemoApi(localStorage)
+    let items: EmailApplication[] = []
+    const scanEmail = vi.fn(async () => {
+      const created = await base.createApplication({
+        company: 'Fabrikam',
+        role: 'Data Analyst',
+        location: '',
+        url: '',
+        status: 'applied',
+        appliedOn: '2026-10-12',
+        salary: '',
+        notes: '',
+        jobDescription: '',
+      })
+      items = [found({ state: 'created', applicationId: created.data!.id })]
+      return {
+        data: { scanned: 3, matched: 0, applied: 0, suggested: 0, added: 1, toAdd: 0, complete: true },
+        error: null,
+      }
+    })
+    const undoEmailApplication = vi.fn(async () => {
+      await base.deleteApplication(items[0].applicationId!)
+      items = []
+      return { data: null, error: null }
+    })
+    const api = {
+      ...base,
+      mode: 'supabase' as const,
+      emailSyncEnabled: true,
+      getEmailConnection: vi.fn().mockResolvedValue({
+        data: { email: 'tin@gmail.com', status: 'connected', lastScanAt: null, connectedAt: '' },
+        error: null,
+      }),
+      scanEmail,
+      listEmailApplications: vi.fn(async () => ({ data: items, error: null })),
+      undoEmailApplication,
+    }
+    render(<Tracker api={api} />)
+
+    expect(await screen.findByText('1 application added.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText('Status for Fabrikam')).toHaveValue('applied'))
+    const panel = screen.getByRole('region', { name: 'Email updates' })
+    expect(within(panel).getByRole('link', { name: /Thanks for applying to Fabrikam/ })).toHaveAttribute(
+      'href',
+      expect.stringContaining('mail.google.com'),
+    )
+
+    fireEvent.click(within(panel).getByRole('button', { name: 'Undo adding Fabrikam' }))
+    await waitFor(() => expect(screen.queryByLabelText('Status for Fabrikam')).not.toBeInTheDocument())
+    expect(undoEmailApplication).toHaveBeenCalledWith('n1')
+  })
+
+  it('lets the user fill in a missing role before adding a suggestion', async () => {
+    const addEmailApplication = vi.fn().mockResolvedValue({ data: null, error: null })
+    const dismissEmailApplication = vi.fn().mockResolvedValue({ data: null, error: null })
+    const api = {
+      ...createDemoApi(localStorage),
+      mode: 'supabase' as const,
+      emailSyncEnabled: true,
+      getEmailConnection: vi.fn().mockResolvedValue({
+        data: { email: 'tin@gmail.com', status: 'connected', lastScanAt: new Date().toISOString(), connectedAt: '' },
+        error: null,
+      }),
+      scanEmail: vi.fn(),
+      listEmailApplications: vi.fn().mockResolvedValue({
+        data: [found({ role: '' }), found({ id: 'n2', company: 'Litware', subject: 'Your application to Litware' })],
+        error: null,
+      }),
+      addEmailApplication,
+      dismissEmailApplication,
+    }
+    render(<Tracker api={api} />)
+    const panel = await screen.findByRole('region', { name: 'Email updates' })
+    const add = await within(panel).findByRole('button', { name: 'Add Fabrikam' })
+    expect(add).toBeDisabled()
+    fireEvent.change(within(panel).getAllByLabelText('Role')[0], { target: { value: 'Data Analyst' } })
+    fireEvent.click(add)
+    await waitFor(() =>
+      expect(addEmailApplication).toHaveBeenCalledWith('n1', { company: 'Fabrikam', role: 'Data Analyst' }),
+    )
+    fireEvent.click(within(panel).getByRole('button', { name: 'Dismiss Litware' }))
+    await waitFor(() => expect(dismissEmailApplication).toHaveBeenCalledWith('n2'))
   })
 
   it('asks to reconnect when Google access expired', async () => {

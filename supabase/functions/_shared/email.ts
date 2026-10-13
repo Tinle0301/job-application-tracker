@@ -359,3 +359,136 @@ export function decideUpdate(
   if (action === 'apply' && (ambiguous || confidence < AUTO_APPLY_CONFIDENCE)) action = 'suggest'
   return action
 }
+
+// ---------------------------------------------------------------- new applications
+
+/**
+ * Phrases that confirm an application was submitted. Gmail search narrows the
+ * inbox to these; the model then decides which emails really are
+ * confirmations and reads the company and role from them.
+ */
+const CONFIRMATION_PHRASES = [
+  'thank you for applying',
+  'thanks for applying',
+  'thank you for your application',
+  'thanks for your application',
+  'application received',
+  'received your application',
+  'application has been received',
+  'application was received',
+  'application submitted',
+  'application has been submitted',
+  'application was submitted',
+  'application was sent',
+  'successfully applied',
+  'successfully submitted',
+  'your application to',
+  'your application for',
+  'thank you for your interest',
+]
+
+/** Gmail search for application confirmations received after `afterEpochSeconds`. */
+export function confirmationQuery(afterEpochSeconds: number): string {
+  const phrases = CONFIRMATION_PHRASES.map((p) => `"${p}"`).join(' OR ')
+  return `after:${Math.floor(afterEpochSeconds)} -from:me -in:chats -in:spam -in:trash (${phrases})`
+}
+
+/** Subject or preview reads like an application confirmation (cheap check before the model reads it). */
+export function looksLikeConfirmation(email: EmailSummary): boolean {
+  const text = words(`${email.subject} ${email.snippet}`).join(' ')
+  return CONFIRMATION_PHRASES.some((p) => text.includes(words(p).join(' ')))
+}
+
+/** Link that opens the email in Gmail, in the connected account. */
+export function gmailLink(messageId: string, account: string): string {
+  return `https://mail.google.com/mail/?authuser=${encodeURIComponent(account)}#all/${encodeURIComponent(messageId)}`
+}
+
+/** The calendar date an email arrived, in the user's time zone (UTC when unknown or invalid). */
+export function localDate(iso: string, timeZone?: string): string {
+  const d = new Date(iso)
+  try {
+    if (timeZone) {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(d)
+      const get = (t: string) => parts.find((p) => p.type === t)?.value
+      return `${get('year')}-${get('month')}-${get('day')}`
+    }
+  } catch {
+    /* unknown zone: fall back to UTC */
+  }
+  return d.toISOString().slice(0, 10)
+}
+
+/** "Northwind" and "Northwind Labs, Inc." are the same company; "Northwind" and "Northwood" are not. */
+export function sameCompany(a: string, b: string): boolean {
+  const wa = companyWords(a)
+  const wb = companyWords(b)
+  if (!wa.length || !wb.length) return false
+  if (wa.join('') === wb.join('')) return true
+  const [short, long] = wa.length <= wb.length ? [wa, wb] : [wb, wa]
+  return short.join('').length >= 4 && containsPhrase(long.slice(0, short.length), short)
+}
+
+/** How alike two job titles are (0–1): the larger share of either title's words found in the other. */
+export function roleSimilarity(a: string, b: string): number {
+  const wa = words(a).filter((w) => !ROLE_STOPWORDS.has(w))
+  const wb = words(b).filter((w) => !ROLE_STOPWORDS.has(w))
+  if (!wa.length || !wb.length) return 0
+  const share = (x: string[], y: string[]) => x.filter((w) => y.includes(w)).length / x.length
+  return Math.max(share(wa, wb), share(wb, wa))
+}
+
+/** Titles at least this alike are the same job. */
+const SAME_ROLE = 0.6
+/** Between this and SAME_ROLE it might be the same job: ask the user. */
+const MAYBE_SAME_ROLE = 0.3
+
+export interface Confirmation {
+  confirmation: boolean
+  company: string
+  role: string
+  confidence: number
+  /** When the email arrived (ISO); a confirmation newer than a closed application may be a re-application. */
+  receivedAt?: string
+}
+
+export type NewApplicationDecision =
+  | { action: 'create' }
+  | { action: 'suggest'; possibleDuplicate?: TrackedApplication }
+  | { action: 'duplicate'; application: TrackedApplication }
+  | { action: 'ignore' }
+
+/**
+ * What to do with a confirmation email:
+ * - 'create': add the application now (it can be undone);
+ * - 'suggest': show it and let the user add or dismiss it;
+ * - 'duplicate': it is about an application already tracked;
+ * - 'ignore': not a confirmation.
+ */
+export function decideNewApplication(c: Confirmation, apps: TrackedApplication[]): NewApplicationDecision {
+  if (!c.confirmation || !c.company.trim()) return { action: 'ignore' }
+
+  const sameCo = apps.filter((a) => sameCompany(a.company, c.company))
+  if (sameCo.length) {
+    // Without a role, any tracked job at the company could be the one.
+    if (!c.role.trim()) return { action: 'suggest', possibleDuplicate: sameCo[0] }
+    const ranked = sameCo
+      .map((a) => ({ a, sim: roleSimilarity(a.role, c.role) }))
+      .sort((x, y) => y.sim - x.sim || y.a.updatedAt.localeCompare(x.a.updatedAt))
+    const best = ranked[0].a
+    if (ranked[0].sim >= SAME_ROLE) {
+      const closed = best.status === 'rejected' || best.status === 'withdrawn'
+      if (closed && c.receivedAt && c.receivedAt > best.updatedAt) return { action: 'suggest', possibleDuplicate: best }
+      return { action: 'duplicate', application: best }
+    }
+    if (ranked[0].sim >= MAYBE_SAME_ROLE) return { action: 'suggest', possibleDuplicate: best }
+  }
+
+  if (!c.role.trim() || c.confidence < AUTO_APPLY_CONFIDENCE) return { action: 'suggest' }
+  return { action: 'create' }
+}

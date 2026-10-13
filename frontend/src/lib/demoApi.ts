@@ -201,5 +201,9 @@ export function createDemoApi(storage: Storage | null = safeLocalStorage()): Tra
     applyEmailUpdate: async () => EMAIL_UNAVAILABLE,
     undoEmailUpdate: async () => EMAIL_UNAVAILABLE,
     dismissEmailUpdate: async () => EMAIL_UNAVAILABLE,
+    listEmailApplications: async () => ok([]),
+    addEmailApplication: async () => EMAIL_UNAVAILABLE,
+    undoEmailApplication: async () => EMAIL_UNAVAILABLE,
+    dismissEmailApplication: async () => EMAIL_UNAVAILABLE,
   }
 }
