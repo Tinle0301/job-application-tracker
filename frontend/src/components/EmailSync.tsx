@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Application, EmailConnection, EmailUpdate } from '@backend/models/types'
+import type { Application, EmailApplication, EmailConnection, EmailUpdate } from '@backend/models/types'
 import type { TrackerApi } from '@backend/services/api'
 import { StatusBadge } from './StatusBadge'
 
@@ -43,6 +43,99 @@ function ago(iso: string): string {
 const button =
   'rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-100 disabled:opacity-50'
 
+const small = 'w-40 rounded-md border border-stone-300 px-2 py-1 text-sm focus:border-stone-500 focus:outline-none'
+
+/** A job found in a confirmation email: Undo once added, or Add (with editable company and role) / Dismiss. */
+function NewApplicationRow({
+  item,
+  busy,
+  onAdd,
+  onUndo,
+  onDismiss,
+}: {
+  item: EmailApplication
+  busy: boolean
+  onAdd: (fix: { company: string; role: string }) => void
+  onUndo: () => void
+  onDismiss: () => void
+}) {
+  const [company, setCompany] = useState(item.company)
+  const [role, setRole] = useState(item.role)
+  const source = (
+    <span className="min-w-0 flex-1 truncate text-stone-500" title={`${item.fromAddress}: ${item.subject}`}>
+      {item.state === 'created' ? 'Added from' : 'Found in'}{' '}
+      {item.link ? (
+        <a
+          href={item.link}
+          target="_blank"
+          rel="noreferrer"
+          className="underline decoration-stone-300 hover:text-stone-800"
+        >
+          “{item.subject || '(no subject)'}”
+        </a>
+      ) : (
+        `“${item.subject || '(no subject)'}”`
+      )}{' '}
+      · {ago(item.receivedAt)}
+    </span>
+  )
+
+  if (item.state === 'created')
+    return (
+      <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+        <span className="font-medium">{item.company}</span>
+        <span>{item.role}</span>
+        {source}
+        <button
+          onClick={onUndo}
+          disabled={busy}
+          className="text-stone-600 hover:text-stone-900 disabled:opacity-50"
+          aria-label={`Undo adding ${item.company}`}
+        >
+          Undo
+        </button>
+      </li>
+    )
+
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+      <input
+        value={company}
+        onChange={(e) => setCompany(e.target.value)}
+        placeholder="Company"
+        aria-label="Company"
+        className={small}
+      />
+      <input
+        value={role}
+        onChange={(e) => setRole(e.target.value)}
+        placeholder="Role"
+        aria-label="Role"
+        className={small}
+      />
+      {source}
+      <span className="flex gap-3">
+        <button
+          onClick={() => onAdd({ company: company.trim(), role: role.trim() })}
+          disabled={busy || !company.trim() || !role.trim()}
+          className="font-medium text-stone-900 hover:underline disabled:opacity-50"
+          aria-label={`Add ${company || 'application'}`}
+        >
+          Add
+        </button>
+        <button
+          onClick={onDismiss}
+          disabled={busy}
+          className="text-stone-500 hover:text-stone-800 disabled:opacity-50"
+          aria-label={`Dismiss ${item.company || 'suggestion'}`}
+        >
+          Dismiss
+        </button>
+      </span>
+    </li>
+  )
+}
+
 interface Props {
   api: TrackerApi
   apps: Application[]
@@ -54,6 +147,7 @@ interface Props {
 export function EmailSync({ api, apps, onStatusesChanged }: Props) {
   const [connection, setConnection] = useState<EmailConnection | null | undefined>(undefined)
   const [updates, setUpdates] = useState<EmailUpdate[]>([])
+  const [newApps, setNewApps] = useState<EmailApplication[]>([])
   const [busy, setBusy] = useState<string | null>(null)
   const [outcome] = useState(readOutcome)
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(() =>
@@ -62,8 +156,9 @@ export function EmailSync({ api, apps, onStatusesChanged }: Props) {
   const started = useRef(false)
 
   const loadUpdates = useCallback(async () => {
-    const res = await api.listEmailUpdates()
+    const [res, found] = await Promise.all([api.listEmailUpdates(), api.listEmailApplications()])
     if (res.data) setUpdates(res.data)
+    if (found.data) setNewApps(found.data)
   }, [api])
 
   const scan = useCallback(async () => {
@@ -75,20 +170,21 @@ export function EmailSync({ api, apps, onStatusesChanged }: Props) {
       if (res.error.code === 'EMAIL_RECONNECT') setConnection((c) => (c ? { ...c, status: 'needs_reconnect' } : c))
       return
     }
-    const { applied, suggested, complete } = res.data
+    const { applied, suggested, added = 0, toAdd = 0, complete } = res.data
     const parts = [
+      added ? `${added} application${added === 1 ? '' : 's'} added` : '',
       applied ? `${applied} status${applied === 1 ? '' : 'es'} updated` : '',
-      suggested ? `${suggested} to review` : '',
+      suggested + toAdd ? `${suggested + toAdd} to review` : '',
     ].filter(Boolean)
     setMessage({
       kind: 'ok',
       text:
-        (parts.length ? `${parts.join(', ')}.` : 'No new status changes in your inbox.') +
+        (parts.length ? `${parts.join(', ')}.` : 'Nothing new in your inbox.') +
         (complete ? '' : ' Some emails are left for the next check.'),
     })
     setConnection((c) => (c ? { ...c, lastScanAt: new Date().toISOString() } : c))
     await loadUpdates()
-    if (applied) onStatusesChanged()
+    if (applied || added) onStatusesChanged()
   }, [api, loadUpdates, onStatusesChanged])
 
   useEffect(() => {
@@ -142,6 +238,8 @@ export function EmailSync({ api, apps, onStatusesChanged }: Props) {
 
   const byId = new Map(apps.map((a) => [a.id, a]))
   const visible = updates.filter((u) => (u.state === 'applied' || u.state === 'suggested') && byId.has(u.applicationId))
+  // An added application deleted by hand since has nothing left to undo.
+  const found = newApps.filter((n) => n.state === 'suggested' || (n.applicationId && byId.has(n.applicationId)))
 
   return (
     <section aria-label="Email updates" className="space-y-3 rounded-xl border border-stone-200 bg-white p-4">
@@ -159,10 +257,11 @@ export function EmailSync({ api, apps, onStatusesChanged }: Props) {
           </div>
         ) : (
           <div className="text-sm">
-            <p className="font-medium">Update statuses from your inbox</p>
+            <p className="font-medium">Fill in your tracker from your inbox</p>
             <p className="text-stone-500">
-              Connect the Gmail you apply from. The tracker reads job emails only (read-only) and moves applications
-              when an assessment, interview, offer or rejection arrives. You can undo any change.
+              Connect the Gmail you apply from. The tracker reads job emails only (read-only): it adds an application
+              when a company confirms you applied, and moves applications when an assessment, interview, offer or
+              rejection arrives. You can undo any change.
             </p>
           </div>
         )}
@@ -191,6 +290,24 @@ export function EmailSync({ api, apps, onStatusesChanged }: Props) {
         >
           {message.text}
         </p>
+      )}
+
+      {found.length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">New applications from email</h3>
+          <ul className="divide-y divide-stone-100 text-sm">
+            {found.slice(0, 10).map((n) => (
+              <NewApplicationRow
+                key={n.id}
+                item={n}
+                busy={busy !== null}
+                onAdd={(fix) => act(n.id, (id) => api.addEmailApplication(id, fix))}
+                onUndo={() => act(n.id, api.undoEmailApplication)}
+                onDismiss={() => act(n.id, api.dismissEmailApplication)}
+              />
+            ))}
+          </ul>
+        </div>
       )}
 
       {visible.length > 0 && (

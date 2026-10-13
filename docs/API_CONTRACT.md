@@ -82,24 +82,32 @@ Returns `FitAnalysis`: `id`, `score` (0–100), `matchedSkills[]`, `missingSkill
 
 Off unless `emailSyncEnabled` (`VITE_ENABLE_EMAIL_SYNC=true`). See [EMAIL_SYNC.md](EMAIL_SYNC.md).
 
-| Method                   | Returns                   | Backed by                                  |
-| ------------------------ | ------------------------- | ------------------------------------------ |
-| `getEmailConnection()`   | `EmailConnection \| null` | `my_email_connection()`                    |
-| `startEmailConnect()`    | `{ url }`                 | `email-connect` `{ action: 'start' }`      |
-| `disconnectEmail()`      | `null`                    | `email-connect` `{ action: 'disconnect' }` |
-| `scanEmail()`            | `EmailScanResult`         | `email-scan`                               |
-| `listEmailUpdates()`     | `EmailUpdate[]`           | `email_status_updates`, newest 50          |
-| `applyEmailUpdate(id)`   | `null`                    | `apply_email_update()`                     |
-| `undoEmailUpdate(id)`    | `null`                    | `undo_email_update()`                      |
-| `dismissEmailUpdate(id)` | `null`                    | `dismiss_email_update()`                   |
+| Method                                         | Returns                   | Backed by                                                |
+| ---------------------------------------------- | ------------------------- | -------------------------------------------------------- |
+| `getEmailConnection()`                         | `EmailConnection \| null` | `my_email_connection()`                                  |
+| `startEmailConnect()`                          | `{ url }`                 | `email-connect` `{ action: 'start' }`                    |
+| `disconnectEmail()`                            | `null`                    | `email-connect` `{ action: 'disconnect' }`               |
+| `scanEmail()`                                  | `EmailScanResult`         | `email-scan` `{ timeZone }`                              |
+| `listEmailUpdates()`                           | `EmailUpdate[]`           | `email_status_updates`, newest 50                        |
+| `applyEmailUpdate(id)`                         | `null`                    | `apply_email_update()`                                   |
+| `undoEmailUpdate(id)`                          | `null`                    | `undo_email_update()`                                    |
+| `dismissEmailUpdate(id)`                       | `null`                    | `dismiss_email_update()`                                 |
+| `listEmailApplications()`                      | `EmailApplication[]`      | `email_new_applications` (added or suggested), newest 50 |
+| `addEmailApplication(id, { company?, role? })` | `null`                    | `add_email_application()`                                |
+| `undoEmailApplication(id)`                     | `null`                    | `undo_email_application()`                               |
+| `dismissEmailApplication(id)`                  | `null`                    | `dismiss_email_application()`                            |
 
-| Code                        | When                                                                     |
-| --------------------------- | ------------------------------------------------------------------------ |
-| `EMAIL_NOT_CONFIGURED`      | A Google or token secret is missing on the server                        |
-| `EMAIL_NOT_CONNECTED`       | Scan without a connected Gmail                                           |
-| `EMAIL_RECONNECT`           | Google no longer accepts the saved access (7-day expiry in Testing mode) |
-| `EMAIL_SCAN_FAILED`         | Gmail or the model failed                                                |
-| `EMAIL_UPDATE_NOT_FOUND`    | Not the caller's update, or a suggestion already handled                 |
-| `EMAIL_UPDATE_NOT_APPLIED`  | Undo on an update that isn't applied                                     |
-| `EMAIL_UPDATE_STALE`        | Undo after the status was changed by hand                                |
-| `EMAIL_UNAVAILABLE_IN_DEMO` | Demo mode                                                                |
+| Code                          | When                                                                     |
+| ----------------------------- | ------------------------------------------------------------------------ |
+| `EMAIL_NOT_CONFIGURED`        | A Google or token secret is missing on the server                        |
+| `EMAIL_NOT_CONNECTED`         | Scan without a connected Gmail                                           |
+| `EMAIL_RECONNECT`             | Google no longer accepts the saved access (7-day expiry in Testing mode) |
+| `EMAIL_SCAN_FAILED`           | Gmail or the model failed                                                |
+| `EMAIL_UPDATE_NOT_FOUND`      | Not the caller's update, or a suggestion already handled                 |
+| `EMAIL_UPDATE_NOT_APPLIED`    | Undo on an update that isn't applied                                     |
+| `EMAIL_UPDATE_STALE`          | Undo after the status was changed by hand                                |
+| `EMAIL_SUGGESTION_NOT_FOUND`  | Not the caller's suggestion, or one already handled                      |
+| `EMAIL_SUGGESTION_INCOMPLETE` | Adding a suggestion with no company or role                              |
+| `EMAIL_SUGGESTION_NOT_ADDED`  | Undo on an application that wasn't added                                 |
+| `EMAIL_SUGGESTION_STALE`      | Undo after the added application moved past Applied                      |
+| `EMAIL_UNAVAILABLE_IN_DEMO`   | Demo mode                                                                |

@@ -100,11 +100,31 @@ export interface EmailUpdate {
   state: 'applied' | 'suggested' | 'undone' | 'dismissed'
 }
 
+/** A job found in a "thanks for applying" email: added already, or waiting as a suggestion. */
+export interface EmailApplication {
+  id: string
+  /** The application it added (null while it is a suggestion). */
+  applicationId: string | null
+  fromAddress: string
+  subject: string
+  receivedAt: string
+  /** Opens the email in Gmail. */
+  link: string
+  company: string
+  role: string
+  reason: string
+  state: 'created' | 'suggested'
+}
+
 export interface EmailScanResult {
   scanned: number
   matched: number
   applied: number
   suggested: number
+  /** Applications added from confirmation emails. */
+  added: number
+  /** Confirmation emails waiting for the user to add or dismiss. */
+  toAdd: number
   /** False when a limit cut the scan short; scanning again continues. */
   complete: boolean
 }

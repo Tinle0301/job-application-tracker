@@ -13,6 +13,7 @@ import type {
   Resume,
   Status,
   StatusChange,
+  EmailApplication,
   EmailConnection,
   EmailScanResult,
   EmailUpdate,
@@ -151,6 +152,34 @@ async function invokeFunction<T>(
   }
   const payload = data as Result<T>
   return payload?.error ? fail(payload.error.code, payload.error.message) : ok(payload.data as T)
+}
+
+interface EmailApplicationRow {
+  id: string
+  application_id: string | null
+  from_address: string
+  subject: string
+  received_at: string
+  link: string
+  company: string
+  role: string
+  reason: string
+  state: EmailApplication['state']
+}
+
+export function toEmailApplication(r: EmailApplicationRow): EmailApplication {
+  return {
+    id: r.id,
+    applicationId: r.application_id,
+    fromAddress: r.from_address,
+    subject: r.subject,
+    receivedAt: r.received_at,
+    link: r.link,
+    company: r.company,
+    role: r.role,
+    reason: r.reason,
+    state: r.state,
+  }
 }
 
 const EMAIL_UNAVAILABLE = 'Email sync is unavailable right now. Please try again.'
@@ -292,7 +321,9 @@ export function createSupabaseApi(
     },
 
     async scanEmail() {
-      return invokeFunction<EmailScanResult>(db, 'email-scan', {}, EMAIL_UNAVAILABLE)
+      // The time zone dates applications added from email by the user's calendar day.
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+      return invokeFunction<EmailScanResult>(db, 'email-scan', { timeZone }, EMAIL_UNAVAILABLE)
     },
 
     async listEmailUpdates() {
@@ -310,5 +341,27 @@ export function createSupabaseApi(
     applyEmailUpdate: (id) => rpc('apply_email_update', id),
     undoEmailUpdate: (id) => rpc('undo_email_update', id),
     dismissEmailUpdate: (id) => rpc('dismiss_email_update', id),
+
+    async listEmailApplications() {
+      const { data, error } = await db
+        .from('email_new_applications')
+        .select('id, application_id, from_address, subject, received_at, link, company, role, reason, state')
+        .in('state', ['created', 'suggested'])
+        .order('received_at', { ascending: false })
+        .limit(50)
+      if (error) return { data: null, error: toServiceError(error, 'LOAD_FAILED') }
+      return ok((data as EmailApplicationRow[]).map(toEmailApplication))
+    },
+
+    async addEmailApplication(id, fix = {}) {
+      const { error } = await db.rpc('add_email_application', {
+        p_id: id,
+        p_company: fix.company ?? null,
+        p_role: fix.role ?? null,
+      })
+      return error ? { data: null, error: toServiceError(error, 'EMAIL_UPDATE_FAILED') } : ok(null)
+    },
+    undoEmailApplication: (id) => rpc('undo_email_application', id),
+    dismissEmailApplication: (id) => rpc('dismiss_email_application', id),
   }
 }

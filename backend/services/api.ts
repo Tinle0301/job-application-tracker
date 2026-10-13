@@ -10,6 +10,7 @@ import type {
   Status,
   FitAnalysis,
   Usage,
+  EmailApplication,
   EmailConnection,
   EmailScanResult,
   EmailUpdate,
@@ -41,7 +42,7 @@ export interface TrackerApi {
   /** Google's consent page for read-only Gmail access; the app navigates there. */
   startEmailConnect(): Promise<Result<{ url: string }>>
   disconnectEmail(): Promise<Result<null>>
-  /** Reads new job emails and updates statuses. */
+  /** Reads new job emails: adds applications from confirmations and updates statuses. */
   scanEmail(): Promise<Result<EmailScanResult>>
   /** Recent email updates, newest first. */
   listEmailUpdates(): Promise<Result<EmailUpdate[]>>
@@ -49,4 +50,11 @@ export interface TrackerApi {
   applyEmailUpdate(id: string): Promise<Result<null>>
   undoEmailUpdate(id: string): Promise<Result<null>>
   dismissEmailUpdate(id: string): Promise<Result<null>>
+  /** Applications added from confirmation emails and suggestions to add, newest first. */
+  listEmailApplications(): Promise<Result<EmailApplication[]>>
+  /** Adds a suggested application, optionally with a corrected company and role. */
+  addEmailApplication(id: string, fix?: { company?: string; role?: string }): Promise<Result<null>>
+  /** Deletes an application an email added (only while it is still at applied). */
+  undoEmailApplication(id: string): Promise<Result<null>>
+  dismissEmailApplication(id: string): Promise<Result<null>>
 }
