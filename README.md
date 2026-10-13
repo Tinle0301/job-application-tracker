@@ -14,6 +14,7 @@ Track job applications from wishlist to offer, with two AI helpers: **paste a jo
 - **Search, filter, sort, import/export JSON.**
 - **AI auto-fill** _(optional: off until enabled)_: paste a job link (LinkedIn, Greenhouse, Lever, Ashby, Workday or most career pages) or the posting text; company, role, location, salary, requirements and the full description are filled in. Only empty fields are touched.
 - **AI resume match** _(optional: off until enabled)_: a 0–100 fit score per application with matched and missing skills and up to five resume suggestions. The latest score shows in the list.
+- **Email sync** _(optional: off until enabled)_: connect the Gmail you apply from (read-only) and statuses move when assessment, interview, offer or rejection emails arrive. Each change is marked "from email" in the timeline and can be undone. See [docs/EMAIL_SYNC.md](docs/EMAIL_SYNC.md).
 - **Two modes**: demo (localStorage, no setup) and Supabase (email + password sign-in, row-level security, optional AI).
 
 ## Tech stack
@@ -22,7 +23,7 @@ Track job applications from wishlist to offer, with two AI helpers: **paste a jo
 | -------- | --------------------------------------------------------------------- |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4                           |
 | Backend  | Supabase: PostgreSQL, Auth, Row-Level Security, Edge Functions (Deno) |
-| AI       | LLM via the Anthropic API, with forced tool use for structured JSON   |
+| AI       | Google Gemini API (free tier), with forced function calling for JSON  |
 | Testing  | Vitest, React Testing Library, SQL tests against Postgres 16 in CI    |
 | Tooling  | oxlint, Prettier, GitHub Actions (frontend, database, functions jobs) |
 
@@ -36,17 +37,19 @@ frontend/                 React app (Vite root)
 backend/
   models/types.ts         Domain types shared by UI, services and tests
   services/               TrackerApi contract, Supabase implementation, validation, Result helpers
-  migrations/             0001 schema · 0002 RLS · 0003 triggers/RPC · 0004 AI tables
+  migrations/             0001 schema · 0002 RLS · 0003 triggers/RPC · 0004 AI tables · … · 0007 email sync
   seed/seed.sql           Two demo users with sample data
   tests/                  SQL checks (RLS, status history) + unit tests for services and AI helpers
 supabase/functions/
   parse-job/              Posting text or URL → structured fields
   match-resume/           Resume × job description → fit analysis
+  email-connect/          Gmail OAuth connect / disconnect
+  email-scan/             Inbox → matched emails → status updates
   _shared/                LLM client, prompts + JSON schemas + validators, HTML/URL guards
 docs/                     Architecture, data model, API contract, AI features, setup, ADRs
 ```
 
-Read more: [Architecture](docs/ARCHITECTURE.md) · [Data model](docs/DATA_MODEL.md) · [API contract](docs/API_CONTRACT.md) · [AI features](docs/AI_FEATURES.md) · [Requirements](docs/REQUIREMENTS.md) · [Use cases](docs/USE_CASES.md) · [ADRs](docs/adr)
+Read more: [Architecture](docs/ARCHITECTURE.md) · [Data model](docs/DATA_MODEL.md) · [API contract](docs/API_CONTRACT.md) · [AI features](docs/AI_FEATURES.md) · [Email sync](docs/EMAIL_SYNC.md) · [Requirements](docs/REQUIREMENTS.md) · [Use cases](docs/USE_CASES.md) · [ADRs](docs/adr)
 
 ## Getting started
 
@@ -76,7 +79,7 @@ To launch with Supabase + Vercel (and later turn on AI), follow **[docs/SETUP.md
 
 - Every table has RLS scoped to `auth.uid()`; CI proves cross-user reads and writes fail.
 - Database-enforced usage limits keep the project inside the free tiers (per-user caps, write rate limits, sign-up and storage caps). See [docs/LIMITS.md](docs/LIMITS.md).
-- The Anthropic key lives only in Supabase function secrets. Functions run with the caller's JWT, so RLS applies to AI reads and writes too.
+- The Gemini API key lives only in Supabase function secrets. Functions run with the caller's JWT, so RLS applies to AI reads and writes too.
 - URL fetching is guarded against SSRF; AI usage has a per-user daily limit. Details in [docs/AI_FEATURES.md](docs/AI_FEATURES.md).
 
 ## Import format

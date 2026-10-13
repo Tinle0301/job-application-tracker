@@ -5,11 +5,11 @@
 
 ## Context
 
-Auto-fill and resume matching need the Anthropic API key. Calling the LLM API from the browser would expose the key. Fetching job URLs from the browser is blocked by CORS anyway.
+Auto-fill and resume matching need an LLM API key. Calling the LLM API from the browser would expose the key. Fetching job URLs from the browser is blocked by CORS anyway.
 
 ## Decision
 
-Two Deno Edge Functions, `parse-job` and `match-resume`, hold `ANTHROPIC_API_KEY` as a secret. They run as the calling user (their JWT), so RLS still protects data. They use forced tool use for structured JSON, validate the result, enforce a per-user daily quota, and return the same `{ data, error }` envelope as the rest of the API. Pure helpers (prompts, validators, HTML stripping, URL guard) live in `_shared/` and are unit-tested with Vitest.
+Two Deno Edge Functions, `parse-job` and `match-resume`, hold `GEMINI_API_KEY` as a secret. They run as the calling user (their JWT), so RLS still protects data. They use forced function calling for structured JSON, validate the result, enforce a per-user daily quota, and return the same `{ data, error }` envelope as the rest of the API. Pure helpers (prompts, validators, HTML stripping, URL guard) live in `_shared/` and are unit-tested with Vitest.
 
 ## Alternatives considered
 

@@ -23,5 +23,12 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["frontend/src", "backend", "supabase/functions/_shared/prompts.ts", "supabase/functions/_shared/html.ts"]
+  "include": [
+    "frontend/src",
+    "backend",
+    "supabase/functions/_shared/prompts.ts",
+    "supabase/functions/_shared/html.ts",
+    "supabase/functions/_shared/email.ts",
+    "supabase/functions/_shared/crypto.ts"
+  ]
 }

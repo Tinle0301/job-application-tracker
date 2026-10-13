@@ -181,7 +181,14 @@ describe('usage limits', () => {
     const { db } = fakeDb({})
     ;(db as unknown as { rpc: unknown }).rpc = () => ({
       single: async () => ({
-        data: { applications: 42, max_applications: 500, writes_today: 7, max_writes_per_day: 1000 },
+        data: {
+          applications: 42,
+          max_applications: 500,
+          writes_today: 7,
+          max_writes_per_day: 1000,
+          autofills_used: 2,
+          max_autofills: 3,
+        },
         error: null,
       }),
     })
@@ -190,6 +197,8 @@ describe('usage limits', () => {
       maxApplications: 500,
       writesToday: 7,
       maxWritesPerDay: 1000,
+      autofillsUsed: 2,
+      maxAutofills: 3,
     })
   })
 })

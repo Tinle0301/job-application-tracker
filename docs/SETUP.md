@@ -15,7 +15,7 @@ With no `VITE_SUPABASE_*` variables the app stores data in `localStorage`. AI fe
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply the migrations **in order** with the SQL editor (or `psql "$DATABASE_URL" -f …`):
-   `backend/migrations/0001_schema.sql` → `0002_rls_policies.sql` → `0003_functions.sql` → `0004_ai.sql` → `0005_usage_limits.sql`.
+   `backend/migrations/0001_schema.sql` → `0002_rls_policies.sql` → `0003_functions.sql` → `0004_ai.sql` → `0005_usage_limits.sql` → `0006_autofill_limit.sql` → `0007_email_sync.sql`.
    Do **not** run `backend/tests/00_supabase_stubs.sql` on Supabase; it only fakes `auth` for CI.
 3. **Authentication → Sign In / Providers → Email:** make sure Email is enabled, **Confirm email** is on, and set the minimum password length to **8**.
 4. **Authentication → URL Configuration:** add `http://localhost:5173` and your deployed URL as redirect URLs.
@@ -30,13 +30,14 @@ With no `VITE_SUPABASE_*` variables the app stores data in `localStorage`. AI fe
 
 ## 3. Enable AI (optional, Edge Functions)
 
-Install the [Supabase CLI](https://supabase.com/docs/guides/cli) and get an API key from the [Anthropic Console](https://console.anthropic.com).
+Install the [Supabase CLI](https://supabase.com/docs/guides/cli) and get a free API key from [Google AI Studio](https://aistudio.google.com/apikey) (sign in with a Google account → **Create API key**). The free tier is rate-limited, and Google may use free-tier prompts to improve its products; see their terms.
 
 ```bash
 supabase login
 supabase link --project-ref <project-ref>
-supabase secrets set ANTHROPIC_API_KEY=sk-ant-... ANTHROPIC_MODEL=<model-id>
-# optional
+supabase secrets set GEMINI_API_KEY=<your-key>
+# optional: another model id from https://ai.google.dev/gemini-api/docs/models (default gemini-2.5-flash)
+supabase secrets set GEMINI_MODEL=gemini-2.5-flash
 supabase secrets set AI_DAILY_LIMIT=50
 supabase functions deploy parse-job
 supabase functions deploy match-resume
@@ -44,7 +45,11 @@ supabase functions deploy match-resume
 
 Then set `VITE_ENABLE_AI=true` in `.env` (and in Vercel) and redeploy; until then the AI controls stay hidden.
 
-`SUPABASE_URL` and `SUPABASE_ANON_KEY` are provided to functions automatically. The Anthropic key never goes in `.env` or any `VITE_*` variable.
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` are provided to functions automatically. The Gemini key never goes in `.env` or any `VITE_*` variable.
+
+### Email sync (optional)
+
+To let the app update statuses from your Gmail, follow [EMAIL_SYNC.md](EMAIL_SYNC.md) (Google Cloud OAuth client, three secrets, two functions, `VITE_ENABLE_EMAIL_SYNC=true`).
 
 ## 4. Test the database locally (optional)
 
@@ -69,7 +74,7 @@ Every push to `main` redeploys automatically; pull requests get preview URLs.
 
 ## Launch checklist
 
-- [ ] Migrations 0001–0005 applied (not the seed, not the test stubs)
+- [ ] Migrations 0001–0007 applied (not the seed, not the test stubs)
 - [ ] RLS enabled on every table (Supabase **Table Editor** shows no "RLS disabled" warnings)
 - [ ] Vercel env vars set; only the **anon** key is used in the browser, never the service-role key
 - [ ] Site URL and redirect URLs point to the Vercel domain

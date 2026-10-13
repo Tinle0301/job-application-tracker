@@ -1,4 +1,4 @@
-import { useState, type ClipboardEvent, type KeyboardEvent } from 'react'
+import { useEffect, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
 import type { ParsedJob } from '@backend/models/types'
 import type { TrackerApi } from '@backend/services/api'
 
@@ -23,6 +23,19 @@ export function AutoFill({ api, autoFocus, onLink, onParsed }: Props) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Lifetime auto-fill allowance; null until loaded, or when there is no cap.
+  const [quota, setQuota] = useState<{ left: number; max: number } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    api.getUsage().then((res) => {
+      if (cancelled || !res.data || res.data.maxAutofills <= 0) return
+      setQuota({ left: Math.max(0, res.data.maxAutofills - res.data.autofillsUsed), max: res.data.maxAutofills })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [api])
 
   const parse = async (source: { url?: string; text?: string }, url?: string) => {
     setBusy(true)
@@ -32,8 +45,10 @@ export function AutoFill({ api, autoFocus, onLink, onParsed }: Props) {
     if (res.error) {
       setError(res.error.message)
       if (res.error.code === 'FETCH_FAILED') setMode('text')
+      if (res.error.code === 'AUTOFILL_LIMIT') setQuota((q) => (q ? { ...q, left: 0 } : { left: 0, max: 0 }))
       return
     }
+    setQuota((q) => (q ? { ...q, left: Math.max(0, q.left - 1) } : q))
     onParsed(res.data, url)
     setLink('')
     setText('')
@@ -75,6 +90,20 @@ export function AutoFill({ api, autoFocus, onLink, onParsed }: Props) {
     'shrink-0 rounded-lg bg-violet-700 px-3 py-2 text-sm font-medium text-white hover:bg-violet-600 disabled:opacity-50'
   const toggle = 'text-xs font-medium text-violet-800 underline-offset-2 hover:underline'
 
+  if (quota?.left === 0)
+    return (
+      <p className="rounded-xl border border-stone-200 bg-stone-50 p-3 text-sm text-stone-600">
+        You've used {quota.max > 0 ? `all ${quota.max}` : 'all your'} free auto-fills. Fill in the details below.
+      </p>
+    )
+
+  const allowance = quota && (
+    <span className="font-medium">
+      {' '}
+      {quota.left} of {quota.max} free auto-fills left.
+    </span>
+  )
+
   return (
     <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50/50 p-3">
       {mode === 'link' ? (
@@ -103,7 +132,7 @@ export function AutoFill({ api, autoFocus, onLink, onParsed }: Props) {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-violet-900/70">
               Fills company, role, location, salary and the description. Works with LinkedIn, Greenhouse, Lever, Ashby,
-              Workday and most career pages.
+              Workday and most career pages.{allowance}
             </p>
             <button type="button" onClick={() => setMode('text')} className={toggle}>
               Paste the text instead

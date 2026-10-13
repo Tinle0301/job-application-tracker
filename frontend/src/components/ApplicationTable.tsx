@@ -131,7 +131,10 @@ function Row({
                   {app.history.map((h, i) => (
                     <li key={i} className="flex items-center gap-3">
                       <StatusBadge status={h.status} />
-                      <span className="text-xs text-stone-500">{formatDate(h.changedAt)}</span>
+                      <span className="text-xs text-stone-500">
+                        {formatDate(h.changedAt)}
+                        {h.source === 'email' && ' · from email'}
+                      </span>
                     </li>
                   ))}
                 </ol>

@@ -9,6 +9,8 @@ export type Status = (typeof STATUSES)[number]
 export interface StatusChange {
   status: Status
   changedAt: string // ISO timestamp
+  /** 'email' when inbox sync made the change (docs/EMAIL_SYNC.md). */
+  source?: 'manual' | 'email'
 }
 
 export interface FitAnalysis {
@@ -71,6 +73,40 @@ export interface Usage {
   maxApplications: number
   writesToday: number
   maxWritesPerDay: number
+  /** Successful AI auto-fills so far, against a lifetime cap (0 = no cap, e.g. demo mode). */
+  autofillsUsed: number
+  maxAutofills: number
+}
+
+/** The user's connected inbox (no token: that never leaves the server). */
+export interface EmailConnection {
+  email: string
+  /** 'needs_reconnect' once Google stops accepting the saved access. */
+  status: 'connected' | 'needs_reconnect'
+  lastScanAt: string | null
+  connectedAt: string
+}
+
+/** A status change an email led to: applied already, or waiting as a suggestion. */
+export interface EmailUpdate {
+  id: string
+  applicationId: string
+  fromAddress: string
+  subject: string
+  receivedAt: string
+  detectedStatus: Status
+  previousStatus: Status
+  reason: string
+  state: 'applied' | 'suggested' | 'undone' | 'dismissed'
+}
+
+export interface EmailScanResult {
+  scanned: number
+  matched: number
+  applied: number
+  suggested: number
+  /** False when a limit cut the scan short; scanning again continues. */
+  complete: boolean
 }
 
 export interface ServiceError {
