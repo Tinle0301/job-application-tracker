@@ -8,15 +8,15 @@ begin;
 
 -- The scan runs as the service role; here the table owner stands in for it.
 insert into email_new_applications
-  (id, user_id, message_id, from_address, subject, received_at, applied_on, link, company, role, location, confidence, state)
+  (id, user_id, message_id, from_address, subject, received_at, applied_on, link, company, role, location, confidence, state, job_url)
 values
   ('bbbbbbbb-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'c1', 'no-reply@greenhouse.io',
-   'Thanks for applying to Litware', now(), '2026-10-12', 'https://mail.google.com/mail/?authuser=alex#all/c1',
-   'Litware', 'Data Engineer', 'Remote', 0.95, 'suggested'),
+   'Thanks for applying to Litware', '2026-10-12 15:00+00', '2026-10-12', 'https://mail.google.com/mail/?authuser=alex#all/c1',
+   'Litware', 'Data Engineer', 'Remote', 0.95, 'suggested', 'https://boards.greenhouse.io/litware/jobs/1234'),
   ('bbbbbbbb-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'c2', 'jobs@tailspin.com',
-   'We received your application', now(), '2026-10-12', '', 'Tailspin', '', '', 0.6, 'suggested'),
+   'We received your application', now(), '2026-10-12', '', 'Tailspin', '', '', 0.6, 'suggested', ''),
   ('bbbbbbbb-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'c3', 'jobs@adatum.com',
-   'Your application to Adatum', now(), '2026-10-12', '', 'Adatum', 'Analyst', '', 0.6, 'suggested');
+   'Your application to Adatum', now(), '2026-10-12', '', 'Adatum', 'Analyst', '', 0.6, 'suggested', '');
 
 -- The scan adds a confident one (auth.uid() is null for the service role).
 select add_email_application('bbbbbbbb-0000-0000-0000-000000000001');
@@ -33,8 +33,12 @@ begin
      or app.status <> 'applied' or app.applied_on <> '2026-10-12' or app.location <> 'Remote' then
     raise exception 'email apps: application wrong: %', app;
   end if;
-  if app.notes not like '%Thanks for applying to Litware%' or app.notes not like '%mail.google.com%' then
-    raise exception 'email apps: notes miss the email: %', app.notes;
+  -- No note about the email; the posting link instead, and Applied dated by the email.
+  if app.notes <> '' or app.url <> 'https://boards.greenhouse.io/litware/jobs/1234' then
+    raise exception 'email apps: notes/link wrong: % / %', app.notes, app.url;
+  end if;
+  if (select changed_at from status_history where application_id = app.id) <> '2026-10-12 15:00+00' then
+    raise exception 'email apps: Applied not dated by the email';
   end if;
   -- Adding again returns the same application.
   if add_email_application(s.id) <> s.application_id then raise exception 'email apps: added twice'; end if;

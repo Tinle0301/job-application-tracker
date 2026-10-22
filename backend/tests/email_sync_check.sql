@@ -12,7 +12,7 @@ values ('11111111-1111-1111-1111-111111111111', 'alex@example.com', 'enc');
 
 insert into email_status_updates
   (id, user_id, application_id, message_id, from_address, subject, received_at, detected_status, previous_status, confidence, state)
-select 'aaaaaaaa-0000-0000-0000-000000000001', user_id, id, 'm1', 'jobs@contoso.com', 'Interview invitation', now(),
+select 'aaaaaaaa-0000-0000-0000-000000000001', user_id, id, 'm1', 'jobs@contoso.com', 'Interview invitation', '2026-10-14 10:00+00',
        'interviewing', status, 0.95, 'suggested'
 from applications where company = 'Contoso Analytics';
 
@@ -33,10 +33,12 @@ declare
 begin
   select * into app from applications where company = 'Contoso Analytics';
   if app.status <> 'interviewing' then raise exception 'email: status not applied (%)', app.status; end if;
-  select * into h from status_history where application_id = app.id order by changed_at desc, id desc limit 1;
+  select * into h from status_history where application_id = app.id order by id desc limit 1;
   if h.source <> 'email' or h.email_update_id <> 'aaaaaaaa-0000-0000-0000-000000000001' then
     raise exception 'email: history row not tagged with its email: %', h;
   end if;
+  -- Dated when the email arrived, not when the inbox was checked.
+  if h.changed_at <> '2026-10-14 10:00+00' then raise exception 'email: history dated %, not by the email', h.changed_at; end if;
   select * into u from email_status_updates where id = 'aaaaaaaa-0000-0000-0000-000000000001';
   if u.state <> 'applied' or u.previous_status <> 'applied' then raise exception 'email: update row wrong: %', u; end if;
 end $$;

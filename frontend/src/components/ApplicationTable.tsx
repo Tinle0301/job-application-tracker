@@ -147,9 +147,29 @@ function Row({
                     {app.salary}
                   </p>
                 )}
-                <p className="whitespace-pre-wrap text-stone-700">
-                  {app.notes || <span className="text-stone-400">No notes</span>}
-                </p>
+                {app.url && (
+                  <p>
+                    <span className="text-stone-500">Job posting: </span>
+                    <a
+                      href={app.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="break-all text-stone-700 hover:underline"
+                    >
+                      {app.url}
+                    </a>
+                  </p>
+                )}
+                {app.notes && <p className="whitespace-pre-wrap text-stone-700">{app.notes}</p>}
+                {app.jobDescription && (
+                  <div>
+                    <span className="text-stone-500">Job description</span>
+                    <p className="mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap rounded-lg border border-stone-200 bg-white p-2 text-stone-700">
+                      {app.jobDescription}
+                    </p>
+                  </div>
+                )}
+                {!app.notes && !app.jobDescription && <p className="text-stone-400">No notes</p>}
               </div>
               {api.aiEnabled && <FitPanel app={app} api={api} onAnalyzed={(a) => onAnalyzed(app.id, a)} />}
             </div>
