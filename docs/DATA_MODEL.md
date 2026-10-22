@@ -83,3 +83,5 @@ Every table has RLS enabled. All policies are scoped to the `authenticated` role
 | `reset_email_lookback()`                     | Trigger: a new application reopens the email look back (0009)   |
 
 0010 dates email-driven `status_history` rows by the email's `received_at`, and adds `email_new_applications.job_url` (the posting link found in the confirmation) and `described_at` (when the scan looked it up).
+
+0011 adds `applications.posting_checked_url` (the posting link the scan last fetched a description for) and `restamp_current_step()`: while an application's current step came from an email and is past Applied, triggers on `application_emails` and `status_history` date it by the newest email about the application.
