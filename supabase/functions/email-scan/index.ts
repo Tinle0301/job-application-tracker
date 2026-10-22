@@ -33,8 +33,8 @@ import {
   type GoogleOAuth,
 } from '../_shared/gmail.ts'
 import { fail, ok, preflight } from '../_shared/http.ts'
-import { fetchPosting } from '../_shared/posting.ts'
-import { callLlmText, callLlmTool, DEFAULT_MODEL, LlmError } from '../_shared/llm.ts'
+import { fetchPosting, PageReaderError } from '../_shared/posting.ts'
+import { callLlmTool, DEFAULT_MODEL, LlmError } from '../_shared/llm.ts'
 import {
   CONFIRM_SYSTEM,
   CONFIRM_TOOL,
@@ -42,10 +42,8 @@ import {
   EMAIL_SYSTEM,
   EMAIL_TOOL,
   emailUserMessage,
-  POSTING_SYSTEM,
   validateConfirmations,
   validateEmailStages,
-  validatePostingText,
 } from '../_shared/prompts.ts'
 import { adminClient, currentUser, DAILY_AI_LIMIT, userClient } from '../_shared/supabase.ts'
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
@@ -317,11 +315,11 @@ const MAX_POSTINGS = 5
  *    link in the email once and sets it as the application's link;
  * 2. for any application with a link but no description (including a link
  *    the user added with Edit), fetches the posting once per link and fills
- *    in the description. Pages that turn away a plain fetch (many careers
- *    sites) are read by the model through Google instead, which counts as
- *    one AI call.
+ *    in the description. Pages that turn away a plain fetch or only render
+ *    with JavaScript (many careers sites) are read by a browser page reader
+ *    instead; no AI call.
  */
-async function fillPostings(db: SupabaseClient, userId: string, accessToken: string, cfg: Settings): Promise<void> {
+async function fillPostings(db: SupabaseClient, userId: string, accessToken: string): Promise<void> {
   const { data: rows } = await db
     .from('email_new_applications')
     .select('id, message_id, application_id')
@@ -355,43 +353,27 @@ async function fillPostings(db: SupabaseClient, userId: string, accessToken: str
 
   const { data: apps } = await db
     .from('applications')
-    .select('id, company, role, url, posting_checked_url')
+    .select('id, url, posting_checked_url')
     .eq('user_id', userId)
     .neq('url', '')
     .eq('job_description', '')
     .order('updated_at', { ascending: false })
     .limit(50)
   // Marked per link; bumping the version prefix gives every unfilled link one more try after a lookup change.
-  const checked = (url: string) => `v3:${url}`.slice(0, 2000)
+  const checked = (url: string) => `v4:${url}`.slice(0, 2000)
   const todo = (apps ?? []).filter((a) => checked(a.url) !== a.posting_checked_url).slice(0, MAX_POSTINGS)
   await mapLimit(todo, MAX_POSTINGS, async (a) => {
-    let text = (await fetchPosting(a.url).catch(() => ({ text: '', url: a.url }))).text
-    if (text.length < 200) text = ''
-    if (!text) {
-      // Out of AI calls for today: leave the link for a later check.
-      if (!(await aiQuotaLeft(db, userId))) {
-        console.warn('email-scan posting read waits: daily AI limit reached')
-        return
-      }
-      try {
-        // Google's URL reader only: Search grounding has no free-tier quota.
-        text = validatePostingText(
-          await callLlmText({
-            apiKey: cfg.apiKey,
-            model: cfg.model,
-            system: POSTING_SYSTEM,
-            user: `Job posting link: ${a.url}\nCompany: ${a.company}\nJob title: ${a.role}`,
-            googleTools: ['url_context'],
-          }),
-        )
-      } catch (e) {
-        console.warn('email-scan posting read failed:', e instanceof Error ? e.message : e)
-        // Busy or rate limited: try this link again on the next check.
-        if (e instanceof LlmError && (e.status === 429 || e.status >= 500)) return
-      } finally {
-        await db.from('ai_usage').insert({ user_id: userId, kind: 'email' })
-      }
-      if (!text) console.warn('email-scan posting read found no description for', new URL(a.url).hostname)
+    let text = ''
+    try {
+      text = (await fetchPosting(a.url)).text
+    } catch (e) {
+      // The page reader is busy: try this link again on the next check.
+      console.warn('email-scan posting read waits:', e instanceof Error ? e.message : e)
+      if (e instanceof PageReaderError) return
+    }
+    if (text.length < 200) {
+      text = ''
+      console.warn('email-scan posting read found no description for', new URL(a.url).hostname)
     }
     const fill: Record<string, string> = { posting_checked_url: checked(a.url) }
     if (text) fill.job_description = text.slice(0, 30000)
@@ -460,7 +442,7 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
     apps,
     result,
   )
-  await fillPostings(db, userId, accessToken, cfg)
+  await fillPostings(db, userId, accessToken)
   if (!apps.length) return await finish()
 
   // Every matched email is listed under its application. While the look-back
