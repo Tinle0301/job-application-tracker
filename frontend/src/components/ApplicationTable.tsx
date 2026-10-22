@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Application, FitAnalysis, Status } from '@backend/models/types'
+import type { Application, ApplicationEmail, FitAnalysis, Status } from '@backend/models/types'
 import type { TrackerApi } from '@backend/services/api'
 import { FitBadge } from './FitBadge'
 import { FitPanel } from './FitPanel'
@@ -152,9 +152,43 @@ function Row({
               </div>
               {api.aiEnabled && <FitPanel app={app} api={api} onAnalyzed={(a) => onAnalyzed(app.id, a)} />}
             </div>
+            {(api.emailSyncEnabled || (app.emails?.length ?? 0) > 0) && <EmailList emails={app.emails ?? []} />}
           </td>
         </tr>
       )}
     </>
+  )
+}
+
+function EmailList({ emails }: { emails: ApplicationEmail[] }) {
+  return (
+    <div className="mt-6">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-stone-500">
+        Emails{emails.length > 0 && ` (${emails.length})`}
+      </h4>
+      {emails.length === 0 ? (
+        <p className="text-sm text-stone-400">No emails about this job yet.</p>
+      ) : (
+        <ul className="divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white text-sm">
+          {emails.map((e) => (
+            <li key={e.id} className="flex gap-4 px-3 py-2">
+              <span className="w-28 shrink-0 tabular-nums text-stone-500">{formatDate(e.receivedAt)}</span>
+              <div className="min-w-0">
+                {e.link ? (
+                  <a href={e.link} target="_blank" rel="noreferrer" className="font-medium hover:underline">
+                    {e.subject || '(no subject)'}
+                  </a>
+                ) : (
+                  <span className="font-medium">{e.subject || '(no subject)'}</span>
+                )}
+                <div className="truncate text-xs text-stone-500">
+                  {e.fromName ? `${e.fromName} <${e.fromAddress}>` : e.fromAddress}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }

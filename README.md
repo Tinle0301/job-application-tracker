@@ -37,7 +37,7 @@ frontend/                 React app (Vite root)
 backend/
   models/types.ts         Domain types shared by UI, services and tests
   services/               TrackerApi contract, Supabase implementation, validation, Result helpers
-  migrations/             0001 schema · 0002 RLS · 0003 triggers/RPC · 0004 AI tables · … · 0007 email sync · 0008 applications from email
+  migrations/             0001 schema · 0002 RLS · 0003 triggers/RPC · 0004 AI tables · … · 0007 email sync · 0008 applications from email · 0009 emails per application
   seed/seed.sql           Two demo users with sample data
   tests/                  SQL checks (RLS, status history) + unit tests for services and AI helpers
 supabase/functions/

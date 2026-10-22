@@ -57,6 +57,10 @@ One row per model call (`kind` = `parse` | `match` | `email`). `ai_calls_today()
 
 One row per confirmation-looking email the scan read: Gmail `message_id` (unique per user), `from_address`, `subject`, `received_at`, `applied_on` (the email's date in the user's time zone), `link` (opens it in Gmail), the `company`, `role` and `location` the model read, `confidence`, `reason`, `state` (`created` | `suggested` | `undone` | `dismissed` | `duplicate` | `ignored`) and `application_id` (the application it added, or the tracked one it duplicates). `ignored` rows keep only the message id. Read-only to users. `email_connections.confirmations_scanned_at` is the confirmation search's own cursor. See [EMAIL_SYNC.md](EMAIL_SYNC.md).
 
+## application_emails (0009)
+
+One row per inbox email the scan matched to an application, whether or not it changed the status: `application_id`, Gmail `message_id` (unique per user), `from_name`, `from_address`, `subject`, `received_at` and `link` (opens it in Gmail). Shown, newest first, in the application's expanded row. Read-only to users; deleted with the application. `email_connections.emails_scanned_at` is the look-back cursor: while it is null the scan lists matched emails from the last 30 days, and a trigger on `applications` clears it whenever an application is added. See [EMAIL_SYNC.md](EMAIL_SYNC.md).
+
 ## Row-level security (0002, 0004)
 
 Every table has RLS enabled. All policies are scoped to the `authenticated` role with `user_id = auth.uid()` (or, for `status_history`, ownership of the parent application). `backend/tests/rls_check.sql` proves cross-user reads, updates and inserts fail.
@@ -76,3 +80,4 @@ Every table has RLS enabled. All policies are scoped to the `authenticated` role
 | `add_email_application(id, company?, role?)` | RPC: adds the application a confirmation email describes (0008) |
 | `undo_email_application(id)`                 | RPC: deletes it again while it is still at Applied              |
 | `dismiss_email_application(id)`              | RPC: hides a suggested application                              |
+| `reset_email_lookback()`                     | Trigger: a new application reopens the email look back (0009)   |

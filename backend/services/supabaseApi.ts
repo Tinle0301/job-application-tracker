@@ -6,6 +6,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   Application,
+  ApplicationEmail,
   ApplicationInput,
   FitAnalysis,
   ParsedJob,
@@ -47,11 +48,19 @@ interface ApplicationRow {
   created_at: string
   updated_at: string
   status_history: { status: Status; changed_at: string; source?: 'manual' | 'email' }[]
+  application_emails?: {
+    id: string
+    from_name: string
+    from_address: string
+    subject: string
+    received_at: string
+    link: string
+  }[]
   ai_analyses: AnalysisRow[]
 }
 
 const SELECT =
-  '*, status_history(status, changed_at, source), ai_analyses(id, score, matched_skills, missing_skills, summary, suggestions, model, created_at)'
+  '*, status_history(status, changed_at, source), application_emails(id, from_name, from_address, subject, received_at, link), ai_analyses(id, score, matched_skills, missing_skills, summary, suggestions, model, created_at)'
 
 export function toAnalysis(r: AnalysisRow): FitAnalysis {
   return {
@@ -70,6 +79,16 @@ export function toApplication(row: ApplicationRow): Application {
   const history: StatusChange[] = (row.status_history ?? [])
     .map((h) => ({ status: h.status, changedAt: h.changed_at, source: h.source ?? 'manual' }))
     .sort((a, b) => a.changedAt.localeCompare(b.changedAt))
+  const emails: ApplicationEmail[] = (row.application_emails ?? [])
+    .map((e) => ({
+      id: e.id,
+      fromName: e.from_name,
+      fromAddress: e.from_address,
+      subject: e.subject,
+      receivedAt: e.received_at,
+      link: e.link,
+    }))
+    .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
   const latest = [...(row.ai_analyses ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
   return {
     id: row.id,
@@ -83,6 +102,7 @@ export function toApplication(row: ApplicationRow): Application {
     notes: row.notes,
     jobDescription: row.job_description ?? '',
     history,
+    emails,
     latestAnalysis: latest ? toAnalysis(latest) : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

@@ -4,6 +4,7 @@ Connect the Gmail account you apply from, and the tracker fills itself in:
 
 - **New applications.** When a company confirms you applied ("Thanks for applying", "We received your application", LinkedIn's "Your application was sent to …"), the job is added as **Applied** on the day the email arrived, with a link to the email in its notes.
 - **Status changes.** Applications move along when an assessment invite, an interview invite, an offer or a rejection arrives. Every change shows in the application's timeline as **from email**.
+- **Email history.** Open an application's row to see every email received about that job, newest first, with its date, subject and sender. The subject opens the email in Gmail.
 
 Anything the tracker adds or changes can be undone.
 
@@ -27,6 +28,8 @@ Off until enabled: the panel only appears when the build has `VITE_ENABLE_EMAIL_
    - fetches the body of matched emails only (at most 30 per check) and asks Gemini, 10 at a time, which stage each one shows: applied, assessment, interviewing, offer, rejected, or none;
    - decides what to do (`decideUpdate` in `supabase/functions/_shared/email.ts`).
 
+   Every matched email is also listed under its application (`application_emails`), whatever the model says about it. The first check after connecting, and the first check after an application is added, look back 30 days for these, so emails that arrived before the job was tracked show up too (only the status check is limited to mail since the last check).
+
 3. **Decide.**
    - **Applied now:** a forward move (Applied → Assessment → Interviewing → Offer) or a rejection, when the model is at least 75% sure and the email clearly belongs to one application.
    - **Suggested:** anything less certain, an email that fits two applications at the same company equally well, news about an application already marked Rejected or Withdrawn, or a rejection after an offer. The user taps **Apply** or **Dismiss**.
@@ -37,7 +40,7 @@ Each Gemini call counts toward the daily AI limit (`AI_DAILY_LIMIT`, shared with
 
 ## What is stored
 
-Only for emails that changed or could change a status: the Gmail message id, sender address, subject, date, detected stage, the model's confidence and a one-line reason (`email_status_updates`). For confirmation emails: the same, plus the company, role, location and a link to the email (`email_new_applications`); confirmation-looking emails that turned out not to be confirmations keep only their message id, so they aren't read twice. Email bodies are never stored. Other emails leave no trace.
+Only for emails that changed or could change a status: the Gmail message id, sender address, subject, date, detected stage, the model's confidence and a one-line reason (`email_status_updates`). For confirmation emails: the same, plus the company, role, location and a link to the email (`email_new_applications`); confirmation-looking emails that turned out not to be confirmations keep only their message id, so they aren't read twice. For every email matched to an application: its message id, sender, subject, date and a Gmail link (`application_emails`), to list them under the application. Email bodies are never stored. Other emails leave no trace.
 
 **Disconnect** revokes the token at Google and deletes it. Status changes already made stay.
 
@@ -71,7 +74,7 @@ You need: a Google account, the Supabase project from [SETUP.md](SETUP.md), the 
 
 ### 2. Supabase
 
-1. In the SQL editor, run `backend/migrations/0007_email_sync.sql` and then `0008_email_new_applications.sql` (after 0001–0006). If you already ran 0007, run 0008 and redeploy `email-scan`; the next check looks back 30 days for confirmations.
+1. In the SQL editor, run `backend/migrations/0007_email_sync.sql` and then `0008_email_new_applications.sql` (after 0001–0006). Then run `0009_application_emails.sql`. If you already ran 0007, run whichever of 0008 and 0009 you haven't and redeploy `email-scan`; the next check looks back 30 days for confirmations and for emails to list under each application.
 2. Set the secrets (never in `.env` or any `VITE_*` variable):
 
    ```bash
