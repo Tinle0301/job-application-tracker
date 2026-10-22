@@ -88,18 +88,27 @@ export async function callLlmText(opts: {
   googleTools?: ('url_context' | 'google_search')[]
   maxTokens?: number
   fetchImpl?: typeof fetch
+  /** Waits before each retry when Google is busy (5xx). */
+  retryDelaysMs?: number[]
 }): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(opts.model)}:generateContent`
-  const res = await (opts.fetchImpl ?? fetch)(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-goog-api-key': opts.apiKey },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: opts.system }] },
-      contents: [{ role: 'user', parts: [{ text: opts.user }] }],
-      tools: (opts.googleTools ?? []).map((t) => ({ [t]: {} })),
-      generationConfig: { temperature: 0, maxOutputTokens: (opts.maxTokens ?? 3000) + 8000 },
-    }),
-  })
+  const send = () =>
+    (opts.fetchImpl ?? fetch)(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': opts.apiKey },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: opts.system }] },
+        contents: [{ role: 'user', parts: [{ text: opts.user }] }],
+        tools: (opts.googleTools ?? []).map((t) => ({ [t]: {} })),
+        generationConfig: { temperature: 0, maxOutputTokens: (opts.maxTokens ?? 3000) + 8000 },
+      }),
+    })
+  let res = await send()
+  for (const delay of opts.retryDelaysMs ?? [2000, 5000]) {
+    if (res.status < 500) break
+    await new Promise((r) => setTimeout(r, delay))
+    res = await send()
+  }
   if (!res.ok) {
     // Google's own reason (quota, unsupported tool…) goes into the logs.
     const detail = await res

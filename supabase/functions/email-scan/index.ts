@@ -311,13 +311,6 @@ async function addFromConfirmations(
 /** Job postings fetched per scan (each is a page fetch). */
 const MAX_POSTINGS = 5
 
-/** Ways to ask Google for a posting, tried in order when the free tier turns one down. */
-const POSTING_TOOLS: ('url_context' | 'google_search')[][] = [
-  ['url_context', 'google_search'],
-  ['google_search'],
-  ['url_context'],
-]
-
 /**
  * Fills in job postings:
  * 1. for applications added from confirmation emails, looks for the job's
@@ -375,34 +368,28 @@ async function fillPostings(db: SupabaseClient, userId: string, accessToken: str
     let text = (await fetchPosting(a.url).catch(() => ({ text: '', url: a.url }))).text
     if (text.length < 200) text = ''
     if (!text) {
-      // Google's reader first; when the free tier turns one tool down, try each on its own.
-      for (const googleTools of POSTING_TOOLS) {
-        // Out of AI calls for today: leave the link for a later check.
-        if (!(await aiQuotaLeft(db, userId))) {
-          console.warn('email-scan posting read waits: daily AI limit reached')
-          return
-        }
-        try {
-          text = validatePostingText(
-            await callLlmText({
-              apiKey: cfg.apiKey,
-              model: cfg.model,
-              system: POSTING_SYSTEM,
-              user: `Job posting link: ${a.url}\nCompany: ${a.company}\nJob title: ${a.role}`,
-              googleTools,
-            }),
-          )
-          await db.from('ai_usage').insert({ user_id: userId, kind: 'email' })
-          break
-        } catch (e) {
-          await db.from('ai_usage').insert({ user_id: userId, kind: 'email' })
-          console.warn(`email-scan posting read (${googleTools.join('+')}) failed:`, e instanceof Error ? e.message : e)
-          // Busy: try this link again on the next check.
-          if (e instanceof LlmError && e.status >= 500) return
-          if (!(e instanceof LlmError && (e.status === 429 || e.status === 400))) break
-          // Rate limited on every way of asking: try again on the next check.
-          if (e.status === 429 && googleTools === POSTING_TOOLS[POSTING_TOOLS.length - 1]) return
-        }
+      // Out of AI calls for today: leave the link for a later check.
+      if (!(await aiQuotaLeft(db, userId))) {
+        console.warn('email-scan posting read waits: daily AI limit reached')
+        return
+      }
+      try {
+        // Google's URL reader only: Search grounding has no free-tier quota.
+        text = validatePostingText(
+          await callLlmText({
+            apiKey: cfg.apiKey,
+            model: cfg.model,
+            system: POSTING_SYSTEM,
+            user: `Job posting link: ${a.url}\nCompany: ${a.company}\nJob title: ${a.role}`,
+            googleTools: ['url_context'],
+          }),
+        )
+      } catch (e) {
+        console.warn('email-scan posting read failed:', e instanceof Error ? e.message : e)
+        // Busy or rate limited: try this link again on the next check.
+        if (e instanceof LlmError && (e.status === 429 || e.status >= 500)) return
+      } finally {
+        await db.from('ai_usage').insert({ user_id: userId, kind: 'email' })
       }
       if (!text) console.warn('email-scan posting read found no description for', new URL(a.url).hostname)
     }
