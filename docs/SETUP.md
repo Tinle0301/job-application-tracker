@@ -36,8 +36,8 @@ Install the [Supabase CLI](https://supabase.com/docs/guides/cli) and get a free 
 supabase login
 supabase link --project-ref <project-ref>
 supabase secrets set GEMINI_API_KEY=<your-key>
-# optional: another model id from https://ai.google.dev/gemini-api/docs/models (default gemini-2.5-flash)
-supabase secrets set GEMINI_MODEL=gemini-2.5-flash
+# optional: another model id from https://ai.google.dev/gemini-api/docs/models (default gemini-flash-latest)
+supabase secrets set GEMINI_MODEL=gemini-flash-latest
 supabase secrets set AI_DAILY_LIMIT=50
 supabase functions deploy parse-job
 supabase functions deploy match-resume

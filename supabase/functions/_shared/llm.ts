@@ -17,8 +17,8 @@ export class LlmError extends Error {
   }
 }
 
-/** Used when the GEMINI_MODEL secret is not set; a fast model on the free tier. */
-export const DEFAULT_MODEL = 'gemini-2.5-flash'
+/** Used when the GEMINI_MODEL secret is not set; Google's alias for its current fast model on the free tier. */
+export const DEFAULT_MODEL = 'gemini-flash-latest'
 
 export async function callLlmTool(opts: {
   apiKey: string
@@ -47,9 +47,11 @@ export async function callLlmTool(opts: {
       toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [opts.tool.name] } },
       generationConfig: {
         temperature: 0,
-        maxOutputTokens: opts.maxTokens ?? 1500,
-        // 2.5 Flash models think by default, which spends the output budget; extraction doesn't need it.
-        ...(model.startsWith('gemini-2.5-flash') ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+        // 2.5 Flash can turn thinking off; newer models think by default, which spends the
+        // output budget, so they get room for it on top of the answer.
+        ...(model.startsWith('gemini-2.5-flash')
+          ? { maxOutputTokens: opts.maxTokens ?? 1500, thinkingConfig: { thinkingBudget: 0 } }
+          : { maxOutputTokens: (opts.maxTokens ?? 1500) + 8000 }),
       },
     }),
   })
