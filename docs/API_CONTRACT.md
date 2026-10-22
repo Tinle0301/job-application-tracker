@@ -102,6 +102,8 @@ Off unless `emailSyncEnabled` (`VITE_ENABLE_EMAIL_SYNC=true`). See [EMAIL_SYNC.m
 | `EMAIL_NOT_CONFIGURED`        | A Google or token secret is missing on the server                        |
 | `EMAIL_NOT_CONNECTED`         | Scan without a connected Gmail                                           |
 | `EMAIL_RECONNECT`             | Google no longer accepts the saved access (7-day expiry in Testing mode) |
+| `EMAIL_GMAIL_DISABLED`        | The Gmail API is off in the Google Cloud project                         |
+| `EMAIL_AI_REJECTED`           | The model API rejected the key or request                                |
 | `EMAIL_SCAN_FAILED`           | Gmail or the model failed                                                |
 | `EMAIL_UPDATE_NOT_FOUND`      | Not the caller's update, or a suggestion already handled                 |
 | `EMAIL_UPDATE_NOT_APPLIED`    | Undo on an update that isn't applied                                     |

@@ -23,7 +23,14 @@ import {
   type EmailSummary,
   type TrackedApplication,
 } from '../_shared/email.ts'
-import { getMessage, GoogleAuthError, listMessageIds, refreshAccessToken, type GoogleOAuth } from '../_shared/gmail.ts'
+import {
+  getMessage,
+  GmailError,
+  GoogleAuthError,
+  listMessageIds,
+  refreshAccessToken,
+  type GoogleOAuth,
+} from '../_shared/gmail.ts'
 import { fail, ok, preflight } from '../_shared/http.ts'
 import { callLlmTool, DEFAULT_MODEL, LlmError } from '../_shared/llm.ts'
 import {
@@ -442,12 +449,22 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
   return await finish()
 }
 
-const errorResponse = (e: unknown) =>
-  e instanceof ScanError
-    ? fail(e.status, e.code, e.message)
-    : e instanceof GoogleAuthError
-      ? fail(409, 'EMAIL_RECONNECT', 'Google access expired. Connect your Gmail again.')
-      : fail(502, 'EMAIL_SCAN_FAILED', "Couldn't read your inbox right now. Please try again.")
+function errorResponse(e: unknown) {
+  if (e instanceof ScanError) return fail(e.status, e.code, e.message)
+  if (e instanceof GoogleAuthError)
+    return fail(409, 'EMAIL_RECONNECT', 'Google access expired. Connect your Gmail again.')
+  // Logged so the cause shows up in the function's logs on the dashboard.
+  console.error('email-scan failed:', e instanceof Error ? e.message : e)
+  if (e instanceof GmailError && e.status === 403)
+    return fail(
+      502,
+      'EMAIL_GMAIL_DISABLED',
+      'Gmail refused the request. Turn on the Gmail API in your Google Cloud project.',
+    )
+  if (e instanceof LlmError && [400, 401, 403].includes(e.status))
+    return fail(502, 'EMAIL_AI_REJECTED', 'The AI service rejected the request. Check the GEMINI_API_KEY secret.')
+  return fail(502, 'EMAIL_SCAN_FAILED', "Couldn't read your inbox right now. Please try again.")
+}
 
 Deno.serve(async (req) => {
   const pre = preflight(req)
