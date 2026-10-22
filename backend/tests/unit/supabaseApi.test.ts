@@ -86,6 +86,33 @@ describe('toApplication', () => {
     expect(app.latestAnalysis?.matchedSkills).toEqual(['SQL'])
     expect(app.jobDescription).toBe('JD')
   })
+
+  it('lists the emails newest first', () => {
+    const app = toApplication({
+      ...row,
+      application_emails: [
+        {
+          id: 'e1',
+          from_name: '',
+          from_address: 'jobs@northwind.com',
+          subject: 'Received',
+          received_at: '2026-10-01T09:00:00Z',
+          link: '',
+        },
+        {
+          id: 'e2',
+          from_name: 'Northwind',
+          from_address: 'jobs@northwind.com',
+          subject: 'Interview',
+          received_at: '2026-10-03T09:00:00Z',
+          link: 'https://mail.google.com/x',
+        },
+      ],
+    } as never)
+    expect(app.emails?.map((e) => e.subject)).toEqual(['Interview', 'Received'])
+    expect(app.emails?.[0]).toMatchObject({ fromName: 'Northwind', link: 'https://mail.google.com/x' })
+    expect(toApplication(row as never).emails).toEqual([])
+  })
 })
 
 describe('createSupabaseApi', () => {

@@ -133,6 +133,29 @@ async function ask(
 
 const fromLine = (e: EmailSummary) => (e.fromName ? `${e.fromName} <${e.fromAddress}>` : e.fromAddress)
 
+/** Lists emails under the applications they are about (one application per email). */
+async function recordEmails(
+  db: SupabaseClient,
+  userId: string,
+  account: string,
+  emails: { email: EmailSummary; applicationId: string }[],
+): Promise<void> {
+  if (!emails.length) return
+  await db.from('application_emails').upsert(
+    emails.map(({ email, applicationId }) => ({
+      user_id: userId,
+      application_id: applicationId,
+      message_id: email.id,
+      from_name: email.fromName.slice(0, 200),
+      from_address: email.fromAddress.slice(0, 320),
+      subject: email.subject.slice(0, 500),
+      received_at: email.receivedAt,
+      link: gmailLink(email.id, account),
+    })),
+    { onConflict: 'user_id,message_id', ignoreDuplicates: true },
+  )
+}
+
 /**
  * Adds applications from "thanks for applying" emails about jobs that aren't
  * tracked yet. Returns false when a limit cut it short.
@@ -220,6 +243,7 @@ async function addFromConfirmations(
       if (error || !saved) continue
 
       if (decision.action === 'duplicate') {
+        await recordEmails(db, userId, ctx.account, [{ email, applicationId: decision.application.id }])
         // Already tracked: a wishlist entry moves to applied; anything else stays as it is.
         const app = decision.application
         if (app.status !== 'wishlist') continue
@@ -261,6 +285,7 @@ async function addFromConfirmations(
       if (decision.action === 'create') {
         const { data: appId, error: addError } = await db.rpc('add_email_application', { p_id: saved.id })
         if (!addError && appId) {
+          await recordEmails(db, userId, ctx.account, [{ email, applicationId: appId as string }])
           // Later emails in this scan see it, so a second confirmation is a duplicate.
           apps.push({
             id: appId as string,
@@ -282,7 +307,7 @@ async function addFromConfirmations(
 async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZone?: string): Promise<ScanResult> {
   const { data: conn } = await db
     .from('email_connections')
-    .select('email, refresh_token_enc, status, last_scan_at, confirmations_scanned_at')
+    .select('email, refresh_token_enc, status, last_scan_at, confirmations_scanned_at, emails_scanned_at')
     .eq('user_id', userId)
     .maybeSingle()
   if (!conn) throw new ScanError(400, 'EMAIL_NOT_CONNECTED', 'Connect your Gmail first.')
@@ -305,9 +330,11 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
   const startedAt = new Date()
   const result: ScanResult = { scanned: 0, matched: 0, applied: 0, suggested: 0, added: 0, toAdd: 0, complete: true }
   let confirmationsComplete = true
+  let emailsListed = false
   const finish = async () => {
     const done: Record<string, string> = {}
     if (confirmationsComplete) done.confirmations_scanned_at = startedAt.toISOString()
+    if (emailsListed) done.emails_scanned_at = startedAt.toISOString()
     if (result.complete) done.last_scan_at = startedAt.toISOString()
     if (Object.keys(done).length) await db.from('email_connections').update(done).eq('user_id', userId)
     result.complete &&= confirmationsComplete
@@ -340,13 +367,22 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
   )
   if (!apps.length) return await finish()
 
-  const ids = await listMessageIds(accessToken, gmailQuery(sinceFor(conn.last_scan_at)), MAX_MESSAGES)
+  // Every matched email is listed under its application. While the look-back
+  // cursor is unset (first scan, or an application was added since), that
+  // goes back further than the status check, so earlier emails show up too.
+  const statusSince = sinceFor(conn.last_scan_at)
+  const ids = await listMessageIds(
+    accessToken,
+    gmailQuery(Math.min(statusSince, sinceFor(conn.emails_scanned_at))),
+    MAX_MESSAGES,
+  )
   result.scanned = ids.length
+  emailsListed = true
   if (!ids.length) return await finish()
 
   // Skip emails already handled here or as a confirmation (those that turned
   // out not to be confirmations still get read for a status change).
-  const [{ data: seenRows }, { data: confirmedRows }] = await Promise.all([
+  const [{ data: seenRows }, { data: confirmedRows }, { data: listedRows }] = await Promise.all([
     db.from('email_status_updates').select('message_id').eq('user_id', userId).in('message_id', ids),
     db
       .from('email_new_applications')
@@ -354,19 +390,34 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
       .eq('user_id', userId)
       .neq('state', 'ignored')
       .in('message_id', ids),
+    db.from('application_emails').select('message_id').eq('user_id', userId).in('message_id', ids),
   ])
   const seen = new Set([...(seenRows ?? []), ...(confirmedRows ?? [])].map((r) => r.message_id as string))
+  const listed = new Set((listedRows ?? []).map((r) => r.message_id as string))
 
   // Headers and snippet first; only matched emails get their body fetched.
   const heads = await mapLimit(
-    ids.filter((id) => !seen.has(id)),
+    ids.filter((id) => !seen.has(id) || !listed.has(id)),
     5,
     async (id) => summarizeMessage(await getMessage(accessToken, id, 'metadata'), false),
   )
-  const matched = heads
+  const allMatched = heads
     .filter((h) => h.fromAddress !== own)
     .map((email) => ({ email, match: matchApplication(email, apps) }))
     .filter((m): m is { email: EmailSummary; match: NonNullable<typeof m.match> } => m.match !== null)
+  await recordEmails(
+    db,
+    userId,
+    own,
+    allMatched
+      .filter((m) => !listed.has(m.email.id))
+      .map((m) => ({ email: m.email, applicationId: m.match.application.id })),
+  )
+
+  // Only new emails since the last status check are read for a status change.
+  const statusFrom = new Date(statusSince * 1000).toISOString()
+  const matched = allMatched
+    .filter((m) => !seen.has(m.email.id) && m.email.receivedAt >= statusFrom)
     .sort((a, b) => a.email.receivedAt.localeCompare(b.email.receivedAt)) // oldest first, so the latest email wins
   result.matched = matched.length
   if (matched.length > MAX_CLASSIFIED) result.complete = false

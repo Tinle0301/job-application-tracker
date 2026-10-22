@@ -36,9 +36,22 @@ export interface Application {
   notes: string
   jobDescription: string
   history: StatusChange[]
+  /** Emails inbox sync matched to this application, newest first (docs/EMAIL_SYNC.md). */
+  emails?: ApplicationEmail[]
   latestAnalysis: FitAnalysis | null
   createdAt: string
   updatedAt: string
+}
+
+/** An email received about an application: who sent it, the subject and when. */
+export interface ApplicationEmail {
+  id: string
+  fromName: string
+  fromAddress: string
+  subject: string
+  receivedAt: string
+  /** Opens the email in Gmail ('' when unknown). */
+  link: string
 }
 
 /** Fields a user can edit directly in the form. */

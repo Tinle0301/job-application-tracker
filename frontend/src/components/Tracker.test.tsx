@@ -458,4 +458,47 @@ describe('Tracker email sync (mocked supabase API)', () => {
     expect(await screen.findByRole('button', { name: 'Reconnect Gmail' })).toBeInTheDocument()
     expect(screen.getByText(/Google access expired/)).toBeInTheDocument()
   })
+
+  it("lists a job's emails with their dates in its row", async () => {
+    const { base } = await withApp()
+    const listed = (await base.listApplications()).data!
+    const emails = [
+      {
+        id: 'e2',
+        fromName: 'Contoso Talent',
+        fromAddress: 'talent@contoso.com',
+        subject: 'Interview invitation',
+        receivedAt: '2026-10-15T17:00:00Z',
+        link: 'https://mail.google.com/mail/#all/e2',
+      },
+      {
+        id: 'e1',
+        fromName: '',
+        fromAddress: 'no-reply@greenhouse.io',
+        subject: 'Thanks for applying to Contoso',
+        receivedAt: '2026-10-02T17:00:00Z',
+        link: '',
+      },
+    ]
+    render(
+      <Tracker
+        api={{
+          ...base,
+          mode: 'supabase',
+          emailSyncEnabled: true,
+          listApplications: vi.fn().mockResolvedValue({ data: [{ ...listed[0], emails }], error: null }),
+        }}
+      />,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Contoso' }))
+    expect(screen.getByText('Emails (2)')).toBeInTheDocument()
+    const items = screen.getAllByRole('listitem').filter((li) => li.textContent?.includes('@'))
+    expect(items.map((li) => li.textContent)).toEqual([
+      expect.stringContaining('Interview invitation'),
+      expect.stringContaining('Thanks for applying to Contoso'),
+    ])
+    expect(within(items[0]).getByText('Oct 15, 2026')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Interview invitation' })).toHaveAttribute('href', emails[0].link)
+    expect(within(items[0]).getByText('Contoso Talent <talent@contoso.com>')).toBeInTheDocument()
+  })
 })
