@@ -74,3 +74,37 @@ export async function callLlmTool(opts: {
   if (!call?.functionCall) throw new LlmError(502, 'Model returned no structured output')
   return { input: call.functionCall.args ?? {}, model: body.modelVersion ?? model }
 }
+
+/**
+ * A plain-text answer that may use Google's own tools: url_context reads a
+ * web page on Google's side (for pages that turn away a plain fetch) and
+ * google_search looks things up. Returns '' when the model gives no text.
+ */
+export async function callLlmText(opts: {
+  apiKey: string
+  model: string
+  system: string
+  user: string
+  googleTools?: ('url_context' | 'google_search')[]
+  maxTokens?: number
+  fetchImpl?: typeof fetch
+}): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(opts.model)}:generateContent`
+  const res = await (opts.fetchImpl ?? fetch)(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': opts.apiKey },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: opts.system }] },
+      contents: [{ role: 'user', parts: [{ text: opts.user }] }],
+      tools: (opts.googleTools ?? []).map((t) => ({ [t]: {} })),
+      generationConfig: { temperature: 0, maxOutputTokens: (opts.maxTokens ?? 3000) + 8000 },
+    }),
+  })
+  if (!res.ok) throw new LlmError(res.status, `LLM API error ${res.status}`)
+  const body = (await res.json()) as { candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[] }
+  return (body.candidates?.[0]?.content?.parts ?? [])
+    .filter((p) => p.text && !p.thought)
+    .map((p) => p.text)
+    .join('')
+    .trim()
+}

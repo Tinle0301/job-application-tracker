@@ -34,7 +34,7 @@ import {
 } from '../_shared/gmail.ts'
 import { fail, ok, preflight } from '../_shared/http.ts'
 import { fetchPosting } from '../_shared/posting.ts'
-import { callLlmTool, DEFAULT_MODEL, LlmError } from '../_shared/llm.ts'
+import { callLlmText, callLlmTool, DEFAULT_MODEL, LlmError } from '../_shared/llm.ts'
 import {
   CONFIRM_SYSTEM,
   CONFIRM_TOOL,
@@ -42,8 +42,10 @@ import {
   EMAIL_SYSTEM,
   EMAIL_TOOL,
   emailUserMessage,
+  POSTING_SYSTEM,
   validateConfirmations,
   validateEmailStages,
+  validatePostingText,
 } from '../_shared/prompts.ts'
 import { adminClient, currentUser, DAILY_AI_LIMIT, userClient } from '../_shared/supabase.ts'
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
@@ -315,9 +317,11 @@ const MAX_POSTINGS = 5
  *    link in the email once and sets it as the application's link;
  * 2. for any application with a link but no description (including a link
  *    the user added with Edit), fetches the posting once per link and fills
- *    in the description. No AI call.
+ *    in the description. Pages that turn away a plain fetch (many careers
+ *    sites) are read by the model through Google instead, which counts as
+ *    one AI call.
  */
-async function fillPostings(db: SupabaseClient, userId: string, accessToken: string): Promise<void> {
+async function fillPostings(db: SupabaseClient, userId: string, accessToken: string, cfg: Settings): Promise<void> {
   const { data: rows } = await db
     .from('email_new_applications')
     .select('id, message_id, application_id')
@@ -357,11 +361,34 @@ async function fillPostings(db: SupabaseClient, userId: string, accessToken: str
     .eq('job_description', '')
     .order('updated_at', { ascending: false })
     .limit(50)
-  const todo = (apps ?? []).filter((a) => a.url !== a.posting_checked_url).slice(0, MAX_POSTINGS)
+  // Marked per link; the version prefix makes links checked by the fetch-only lookup get one more try.
+  const checked = (url: string) => `v2:${url}`.slice(0, 2000)
+  const todo = (apps ?? []).filter((a) => checked(a.url) !== a.posting_checked_url).slice(0, MAX_POSTINGS)
   await mapLimit(todo, MAX_POSTINGS, async (a) => {
-    const posting = await fetchPosting(a.url).catch(() => ({ text: '', url: a.url }))
-    const fill: Record<string, string> = { posting_checked_url: a.url.slice(0, 2000) }
-    if (posting.text.length >= 200) fill.job_description = posting.text.slice(0, 30000)
+    let text = (await fetchPosting(a.url).catch(() => ({ text: '', url: a.url }))).text
+    if (text.length < 200) text = ''
+    if (!text) {
+      // Out of AI calls for today: leave the link for a later check.
+      if (!(await aiQuotaLeft(db, userId))) return
+      try {
+        text = validatePostingText(
+          await callLlmText({
+            apiKey: cfg.apiKey,
+            model: cfg.model,
+            system: POSTING_SYSTEM,
+            user: `Job posting link: ${a.url}`,
+            googleTools: ['url_context', 'google_search'],
+          }),
+        )
+        await db.from('ai_usage').insert({ user_id: userId, kind: 'email' })
+      } catch (e) {
+        // Busy or out of quota: try this link again on the next check.
+        if (e instanceof LlmError && (e.status === 429 || e.status >= 500)) return
+        console.error('email-scan posting read failed:', e instanceof Error ? e.message : e)
+      }
+    }
+    const fill: Record<string, string> = { posting_checked_url: checked(a.url) }
+    if (text) fill.job_description = text.slice(0, 30000)
     await db.from('applications').update(fill).eq('id', a.id).eq('job_description', '')
   })
 }
@@ -427,7 +454,7 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
     apps,
     result,
   )
-  await fillPostings(db, userId, accessToken)
+  await fillPostings(db, userId, accessToken, cfg)
   if (!apps.length) return await finish()
 
   // Every matched email is listed under its application. While the look-back
