@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Application, ApplicationEmail, FitAnalysis, Status } from '@backend/models/types'
 import type { TrackerApi } from '@backend/services/api'
+import { lastUpdated } from '../lib/filters'
 import { FitBadge } from './FitBadge'
 import { FitPanel } from './FitPanel'
 import { StatusSelect } from './StatusSelect'
@@ -111,7 +112,7 @@ function Row({
           </td>
         )}
         <td className="px-4 py-3 tabular-nums text-stone-600">{formatDate(app.appliedOn)}</td>
-        <td className="px-4 py-3 tabular-nums text-stone-600">{formatDate(app.updatedAt)}</td>
+        <td className="px-4 py-3 tabular-nums text-stone-600">{formatDate(lastUpdated(app))}</td>
         <td className="px-4 py-3 text-right">
           <button onClick={() => onEdit(app)} className="mr-3 text-stone-600 hover:text-stone-900">
             Edit

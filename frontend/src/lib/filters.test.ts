@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyFilters, DEFAULT_FILTERS } from './filters'
+import { applyFilters, DEFAULT_FILTERS, lastUpdated } from './filters'
 import type { Application } from '@backend/models/types'
 
 const base = {
@@ -61,5 +61,22 @@ describe('applyFilters', () => {
       'Canonical',
       'NVIDIA',
     ])
+  })
+
+  it('sorts by the newest email, falling back to the last edit', () => {
+    const email = (receivedAt: string) => ({
+      id: receivedAt,
+      fromName: '',
+      fromAddress: '',
+      subject: '',
+      receivedAt,
+      link: '',
+    })
+    const withEmails = apps.map((a) =>
+      a.company === 'NVIDIA' ? { ...a, emails: [email('2026-10-03T10:00:00Z'), email('2026-10-20T10:00:00Z')] } : a,
+    )
+    expect(lastUpdated(withEmails[0])).toBe('2026-10-20T10:00:00Z')
+    expect(lastUpdated(apps[1])).toBe('2026-10-08')
+    expect(applyFilters(withEmails, DEFAULT_FILTERS)[0].company).toBe('NVIDIA')
   })
 })
