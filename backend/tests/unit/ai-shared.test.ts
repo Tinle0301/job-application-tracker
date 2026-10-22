@@ -128,6 +128,46 @@ describe('callLlmTool', () => {
     ).rejects.toBeInstanceOf(LlmError)
   })
 
+  it('retries when the model is busy', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            candidates: [{ content: { parts: [{ functionCall: { name: PARSE_TOOL.name, args: { company: 'A' } } }] } }],
+          }),
+        ),
+      )
+    const out = await callLlmTool({
+      apiKey: 'k',
+      system: 's',
+      user: 'u',
+      model: 'm',
+      tool: PARSE_TOOL,
+      fetchImpl,
+      retryDelaysMs: [0],
+    })
+    expect(out.input).toEqual({ company: 'A' })
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('gives up when the model stays busy', async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => new Response('{}', { status: 503 }))
+    await expect(
+      callLlmTool({
+        apiKey: 'k',
+        system: 's',
+        user: 'u',
+        model: 'm',
+        tool: PARSE_TOOL,
+        fetchImpl,
+        retryDelaysMs: [0, 0],
+      }),
+    ).rejects.toMatchObject({ status: 503 })
+    expect(fetchImpl).toHaveBeenCalledTimes(3)
+  })
+
   it('throws LlmError on HTTP errors', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 429 }))
     await expect(

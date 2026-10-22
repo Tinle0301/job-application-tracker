@@ -28,33 +28,43 @@ export async function callLlmTool(opts: {
   tool: ToolDef
   maxTokens?: number
   fetchImpl?: typeof fetch
+  /** Waits before each retry when Google is busy (5xx). */
+  retryDelaysMs?: number[]
 }): Promise<{ input: unknown; model: string }> {
   const model = opts.model
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`
-  const res = await (opts.fetchImpl ?? fetch)(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-goog-api-key': opts.apiKey },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: opts.system }] },
-      contents: [{ role: 'user', parts: [{ text: opts.user }] }],
-      tools: [
-        {
-          functionDeclarations: [
-            { name: opts.tool.name, description: opts.tool.description, parameters: opts.tool.input_schema },
-          ],
+  const send = () =>
+    (opts.fetchImpl ?? fetch)(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': opts.apiKey },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: opts.system }] },
+        contents: [{ role: 'user', parts: [{ text: opts.user }] }],
+        tools: [
+          {
+            functionDeclarations: [
+              { name: opts.tool.name, description: opts.tool.description, parameters: opts.tool.input_schema },
+            ],
+          },
+        ],
+        toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [opts.tool.name] } },
+        generationConfig: {
+          temperature: 0,
+          // 2.5 Flash can turn thinking off; newer models think by default, which spends the
+          // output budget, so they get room for it on top of the answer.
+          ...(model.startsWith('gemini-2.5-flash')
+            ? { maxOutputTokens: opts.maxTokens ?? 1500, thinkingConfig: { thinkingBudget: 0 } }
+            : { maxOutputTokens: (opts.maxTokens ?? 1500) + 8000 }),
         },
-      ],
-      toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [opts.tool.name] } },
-      generationConfig: {
-        temperature: 0,
-        // 2.5 Flash can turn thinking off; newer models think by default, which spends the
-        // output budget, so they get room for it on top of the answer.
-        ...(model.startsWith('gemini-2.5-flash')
-          ? { maxOutputTokens: opts.maxTokens ?? 1500, thinkingConfig: { thinkingBudget: 0 } }
-          : { maxOutputTokens: (opts.maxTokens ?? 1500) + 8000 }),
-      },
-    }),
-  })
+      }),
+    })
+  // Google answers 500/503 when the model is overloaded; that usually passes within seconds.
+  let res = await send()
+  for (const delay of opts.retryDelaysMs ?? [2000, 5000]) {
+    if (res.status < 500) break
+    await new Promise((r) => setTimeout(r, delay))
+    res = await send()
+  }
   if (!res.ok) throw new LlmError(res.status, `LLM API error ${res.status}`)
   const body = (await res.json()) as {
     modelVersion?: string

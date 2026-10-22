@@ -125,7 +125,8 @@ async function ask(
     await db.from('ai_usage').insert({ user_id: userId, kind: 'email' })
     return { input }
   } catch (e) {
-    if (e instanceof LlmError && e.status === 429) return null
+    // Out of quota or still busy after retries: keep what was found and finish on the next check.
+    if (e instanceof LlmError && (e.status === 429 || e.status >= 500)) return null
     throw e
   }
 }
