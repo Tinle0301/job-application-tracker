@@ -100,7 +100,14 @@ export async function callLlmText(opts: {
       generationConfig: { temperature: 0, maxOutputTokens: (opts.maxTokens ?? 3000) + 8000 },
     }),
   })
-  if (!res.ok) throw new LlmError(res.status, `LLM API error ${res.status}`)
+  if (!res.ok) {
+    // Google's own reason (quota, unsupported tool…) goes into the logs.
+    const detail = await res
+      .json()
+      .then((b: { error?: { message?: string } }) => b.error?.message ?? '')
+      .catch(() => '')
+    throw new LlmError(res.status, `LLM API error ${res.status}${detail ? `: ${String(detail).slice(0, 300)}` : ''}`)
+  }
   const body = (await res.json()) as { candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[] }
   return (body.candidates?.[0]?.content?.parts ?? [])
     .filter((p) => p.text && !p.thought)
