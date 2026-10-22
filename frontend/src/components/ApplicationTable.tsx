@@ -169,7 +169,15 @@ function Row({
                     </p>
                   </div>
                 )}
-                {!app.notes && !app.jobDescription && <p className="text-stone-400">No notes</p>}
+                {!app.notes && !app.jobDescription && (
+                  <p className="text-stone-400">
+                    No notes
+                    {api.emailSyncEnabled &&
+                      (app.url
+                        ? '. The job description is filled in from the posting link on the next inbox check.'
+                        : '. Add the job posting link with Edit to fill in the job description.')}
+                  </p>
+                )}
               </div>
               {api.aiEnabled && <FitPanel app={app} api={api} onAnalyzed={(a) => onAnalyzed(app.id, a)} />}
             </div>

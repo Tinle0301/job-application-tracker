@@ -37,6 +37,32 @@ begin
   end;
 end $$;
 
+-- An email moves the job to Assessment; the step then takes the newest email's date.
+insert into email_status_updates
+  (id, user_id, application_id, message_id, from_address, subject, received_at, detected_status, previous_status, confidence, state)
+select 'cccccccc-0000-0000-0000-000000000001', user_id, id, 'e2', 'jobs@contoso.com', 'Assessment', now() - interval '3 days',
+       'assessment', status, 0.9, 'suggested'
+from applications where company = 'Contoso Analytics';
+insert into application_emails (user_id, application_id, message_id, from_address, subject, received_at)
+select user_id, id, 'e4', 'jobs@contoso.com', 'Assessment reminder', now() + interval '1 day'
+from applications where company = 'Contoso Analytics';
+-- The scan lists emails before it reads them for a status change.
+select apply_email_update('cccccccc-0000-0000-0000-000000000001');
+
+do $$
+declare h status_history;
+begin
+  select s.* into h from status_history s join applications a on a.id = s.application_id
+  where a.company = 'Contoso Analytics' order by s.id desc limit 1;
+  if h.status <> 'assessment' or h.changed_at < now() + interval '23 hours' then
+    raise exception 'application emails: Assessment not dated by the newest email: %', h;
+  end if;
+  -- Applied keeps its own date.
+  select s.* into h from status_history s join applications a on a.id = s.application_id
+  where a.company = 'Northwind Labs' and s.status = 'applied';
+  if h.changed_at > now() then raise exception 'application emails: Applied restamped'; end if;
+end $$;
+
 set local role authenticated;
 
 -- Alex sees both emails; Sam sees none and nobody writes directly.
@@ -45,7 +71,7 @@ do $$
 declare n int;
 begin
   select count(*) into n from application_emails;
-  if n <> 2 then raise exception 'application emails: Alex sees % emails, expected 2', n; end if;
+  if n <> 3 then raise exception 'application emails: Alex sees % emails, expected 3', n; end if;
   begin
     insert into application_emails (user_id, application_id, message_id, received_at)
     select user_id, id, 'x1', now() from applications where company = 'Northwind Labs';

@@ -2,9 +2,9 @@
 
 Connect the Gmail account you apply from, and the tracker fills itself in:
 
-- **New applications.** When a company confirms you applied ("Thanks for applying", "We received your application", LinkedIn's "Your application was sent to …"), the job is added as **Applied** on the day the email arrived. When the email links to the job posting, the posting's link and job description are filled in (no AI call; at most 5 postings per check, each looked up once).
+- **New applications.** When a company confirms you applied ("Thanks for applying", "We received your application", LinkedIn's "Your application was sent to …"), the job is added as **Applied** on the day the email arrived. When the email links to the job posting, that link is saved. For any application with a posting link and no description (including a link you add with **Edit**), the next check fetches the posting and fills in the job description (no AI call; at most 5 per check, each link once).
 - **Status changes.** Applications move along when an assessment invite, an interview invite, an offer or a rejection arrives. Every change shows in the application's timeline as **from email**.
-- **Email dates.** Timeline steps an email caused (Applied from a confirmation, Assessment, Interviewing, …) are dated when the email arrived, not when the inbox was checked.
+- **Email dates.** Timeline steps an email caused (Applied from a confirmation, Assessment, Interviewing, …) are dated when the email arrived, not when the inbox was checked. While a job stays at a stage past Applied that an email set, that step shows the date of the newest email about the job (e.g. the latest assessment reminder).
 - **Email history.** Open an application's row to see every email received about that job, newest first, with its date, subject and sender. The subject opens the email in Gmail.
 
 Anything the tracker adds or changes can be undone.
@@ -75,7 +75,7 @@ You need: a Google account, the Supabase project from [SETUP.md](SETUP.md), the 
 
 ### 2. Supabase
 
-1. In the SQL editor, run `backend/migrations/0007_email_sync.sql` and then `0008_email_new_applications.sql` (after 0001–0006). Then run `0009_application_emails.sql` and `0010_email_dates_and_postings.sql`. If you already ran 0007, run whichever of 0008–0010 you haven't and redeploy `email-scan`; the next check looks back 30 days for confirmations and for emails to list under each application.
+1. In the SQL editor, run `backend/migrations/0007_email_sync.sql` and then `0008_email_new_applications.sql` (after 0001–0006). Then run `0009_application_emails.sql`, `0010_email_dates_and_postings.sql` and `0011_stage_dates_and_posting_links.sql`. If you already ran 0007, run whichever of 0008–0011 you haven't and redeploy `email-scan`; the next check looks back 30 days for confirmations and for emails to list under each application.
 2. Set the secrets (never in `.env` or any `VITE_*` variable):
 
    ```bash

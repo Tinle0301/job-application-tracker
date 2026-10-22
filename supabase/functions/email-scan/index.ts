@@ -306,16 +306,18 @@ async function addFromConfirmations(
   return complete
 }
 
-/** Job postings looked up per scan (each is a page fetch). */
+/** Job postings fetched per scan (each is a page fetch). */
 const MAX_POSTINGS = 5
 
 /**
- * Fills in the posting link and job description of applications added from
- * confirmation emails: finds the job's link in the email (or uses the one the
- * user set), fetches the posting, and fills only fields that are still empty.
- * Each one is looked up once.
+ * Fills in job postings:
+ * 1. for applications added from confirmation emails, looks for the job's
+ *    link in the email once and sets it as the application's link;
+ * 2. for any application with a link but no description (including a link
+ *    the user added with Edit), fetches the posting once per link and fills
+ *    in the description. No AI call.
  */
-async function describeFromEmails(db: SupabaseClient, userId: string, accessToken: string): Promise<void> {
+async function fillPostings(db: SupabaseClient, userId: string, accessToken: string): Promise<void> {
   const { data: rows } = await db
     .from('email_new_applications')
     .select('id, message_id, application_id')
@@ -328,29 +330,39 @@ async function describeFromEmails(db: SupabaseClient, userId: string, accessToke
   await mapLimit(rows ?? [], MAX_POSTINGS, async (r) => {
     let jobUrl = ''
     try {
-      const { data: app } = await db
-        .from('applications')
-        .select('url, job_description')
-        .eq('id', r.application_id)
-        .maybeSingle()
-      const link = app && (app.url || jobLinkFromEmail(await getMessage(accessToken, r.message_id, 'full')))
-      if (app && link) {
-        const posting = await fetchPosting(link).catch(() => ({ text: '', url: link }))
-        jobUrl = (app.url || posting.url).slice(0, 2000)
-        const fill: Record<string, string> = {}
-        if (!app.url && /^https:\/\//i.test(jobUrl)) fill.url = jobUrl
-        if (!app.job_description && posting.text.length >= 200) fill.job_description = posting.text.slice(0, 30000)
-        if (Object.keys(fill).length) await db.from('applications').update(fill).eq('id', r.application_id)
+      const { data: app } = await db.from('applications').select('url').eq('id', r.application_id).maybeSingle()
+      if (app && !app.url) {
+        const link = jobLinkFromEmail(await getMessage(accessToken, r.message_id, 'full'))
+        if (/^https:\/\//i.test(link) && link.length <= 2000) {
+          jobUrl = link
+          await db.from('applications').update({ url: link }).eq('id', r.application_id)
+        }
       }
     } catch (e) {
       // Gmail trouble: try again on the next check. Anything else: give up on this one.
       if (e instanceof GmailError || e instanceof GoogleAuthError) return
-      console.error('email-scan posting lookup failed:', e instanceof Error ? e.message : e)
+      console.error('email-scan posting link failed:', e instanceof Error ? e.message : e)
     }
     await db
       .from('email_new_applications')
-      .update({ described_at: new Date().toISOString(), job_url: /^https:\/\//i.test(jobUrl) ? jobUrl : '' })
+      .update({ described_at: new Date().toISOString(), job_url: jobUrl })
       .eq('id', r.id)
+  })
+
+  const { data: apps } = await db
+    .from('applications')
+    .select('id, url, posting_checked_url')
+    .eq('user_id', userId)
+    .neq('url', '')
+    .eq('job_description', '')
+    .order('updated_at', { ascending: false })
+    .limit(50)
+  const todo = (apps ?? []).filter((a) => a.url !== a.posting_checked_url).slice(0, MAX_POSTINGS)
+  await mapLimit(todo, MAX_POSTINGS, async (a) => {
+    const posting = await fetchPosting(a.url).catch(() => ({ text: '', url: a.url }))
+    const fill: Record<string, string> = { posting_checked_url: a.url.slice(0, 2000) }
+    if (posting.text.length >= 200) fill.job_description = posting.text.slice(0, 30000)
+    await db.from('applications').update(fill).eq('id', a.id).eq('job_description', '')
   })
 }
 
@@ -415,7 +427,7 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
     apps,
     result,
   )
-  await describeFromEmails(db, userId, accessToken)
+  await fillPostings(db, userId, accessToken)
   if (!apps.length) return await finish()
 
   // Every matched email is listed under its application. While the look-back
