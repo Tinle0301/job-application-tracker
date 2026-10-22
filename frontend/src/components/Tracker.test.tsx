@@ -521,4 +521,31 @@ describe('Tracker email sync (mocked supabase API)', () => {
     expect(screen.getByText('Build cloud tools with Go and TypeScript.')).toBeInTheDocument()
     expect(screen.queryByText('No notes')).not.toBeInTheDocument()
   })
+
+  it('opens the matching job with the description the bookmark sent', async () => {
+    const base = createDemoApi(localStorage)
+    await base.createApplication({
+      company: 'IBM',
+      role: 'Software Developer Intern',
+      location: '',
+      url: 'https://careers.ibm.com/en_US/careers/JobDetail/Software-Developer-Intern-2027/128497',
+      status: 'applied',
+      appliedOn: '2026-10-14',
+      salary: '',
+      notes: '',
+      jobDescription: '',
+    })
+    const page = {
+      u: 'https://careers.ibm.com/en_US/careers/JobDetail/Software-Developer-Intern-2027/128497?x=1',
+      t: 'Write code.',
+    }
+    window.history.replaceState(null, '', '/#jd=' + encodeURIComponent(JSON.stringify(page)))
+    render(<Tracker api={base} />)
+    expect(await screen.findByLabelText('Job description')).toHaveValue('Write code.')
+    expect(screen.getByLabelText('Company *')).toHaveValue('IBM')
+    expect(window.location.hash).toBe('')
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'IBM' }))
+    expect(screen.getByText('Write code.')).toBeInTheDocument()
+  })
 })

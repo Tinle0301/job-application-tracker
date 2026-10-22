@@ -21,13 +21,15 @@ const EMPTY: ApplicationInput = {
 interface Props {
   api: TrackerApi
   initial?: Application
+  /** Values to fill in over `initial`, e.g. a description sent by the bookmark. */
+  prefill?: Partial<ApplicationInput>
   onSubmit: (input: ApplicationInput) => void
   onCancel: () => void
 }
 
-export function ApplicationForm({ api, initial, onSubmit, onCancel }: Props) {
-  const [form, setForm] = useState<ApplicationInput>(() =>
-    initial
+export function ApplicationForm({ api, initial, prefill, onSubmit, onCancel }: Props) {
+  const [form, setForm] = useState<ApplicationInput>(() => ({
+    ...(initial
       ? {
           company: initial.company,
           role: initial.role,
@@ -39,8 +41,9 @@ export function ApplicationForm({ api, initial, onSubmit, onCancel }: Props) {
           notes: initial.notes,
           jobDescription: initial.jobDescription,
         }
-      : EMPTY,
-  )
+      : EMPTY),
+    ...prefill,
+  }))
   const set = <K extends keyof ApplicationInput>(key: K, value: ApplicationInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
 
