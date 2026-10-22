@@ -12,6 +12,7 @@ import {
   sameCompany,
   type Confirmation,
   gmailQuery,
+  jobLinkFromEmail,
   matchApplication,
   messageBody,
   parseFrom,
@@ -359,5 +360,43 @@ describe('adding applications from confirmation emails', () => {
     ])
     expect(msg).toContain(`<email id="m'1">`)
     expect(msg.match(/<\/email>/g)).toHaveLength(1)
+  })
+})
+
+describe('jobLinkFromEmail', () => {
+  const html = (body: string) => ({
+    id: 'm1',
+    payload: { mimeType: 'multipart/alternative', parts: [{ mimeType: 'text/html', body: { data: b64url(body) } }] },
+  })
+
+  it('picks the job posting over account, unsubscribe and social links', () => {
+    const m = html(`
+      <a href="https://ibm.wd1.myworkdayjobs.com/en-US/External/login">Sign in to your account</a>
+      <a href="https://careers.ibm.com/job/21587432/software-engineering-intern-2027/?codes=web&amp;src=email">Software Engineering Intern 2027</a>
+      <a href="https://www.linkedin.com/company/ibm">LinkedIn</a>
+      <a href="https://ibm.com/unsubscribe?u=1">Unsubscribe</a>`)
+    expect(jobLinkFromEmail(m)).toBe(
+      'https://careers.ibm.com/job/21587432/software-engineering-intern-2027/?codes=web&src=email',
+    )
+  })
+
+  it('prefers a job-board link and reads links in plain text', () => {
+    const m = {
+      id: 'm2',
+      payload: {
+        mimeType: 'text/plain',
+        body: { data: b64url('Thanks! See https://acme.com/jobs/4412 or https://boards.greenhouse.io/acme/jobs/4412') },
+      },
+    }
+    expect(jobLinkFromEmail(m)).toBe('https://boards.greenhouse.io/acme/jobs/4412')
+  })
+
+  it('follows "View job" text, and finds nothing in an email without a job link', () => {
+    expect(jobLinkFromEmail(html('<a href="https://click.mail.acme.com/abc">View job</a>'))).toBe(
+      'https://click.mail.acme.com/abc',
+    )
+    expect(
+      jobLinkFromEmail(html('<a href="https://acme.com/jobs">All jobs</a> <a href="https://acme.com">Home</a>')),
+    ).toBe('')
   })
 })

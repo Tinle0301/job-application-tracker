@@ -501,4 +501,24 @@ describe('Tracker email sync (mocked supabase API)', () => {
     expect(screen.getByRole('link', { name: 'Interview invitation' })).toHaveAttribute('href', emails[0].link)
     expect(within(items[0]).getByText('Contoso Talent <talent@contoso.com>')).toBeInTheDocument()
   })
+
+  it('shows the job posting link and description in the row', async () => {
+    const base = createDemoApi(localStorage)
+    await base.createApplication({
+      company: 'IBM',
+      role: 'Software Engineering Intern 2027',
+      location: '',
+      url: 'https://careers.ibm.com/job/21587432',
+      status: 'applied',
+      appliedOn: '2026-10-14',
+      salary: '',
+      notes: '',
+      jobDescription: 'Build cloud tools with Go and TypeScript.',
+    })
+    render(<Tracker api={base} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'IBM' }))
+    expect(screen.getByRole('link', { name: 'https://careers.ibm.com/job/21587432' })).toBeInTheDocument()
+    expect(screen.getByText('Build cloud tools with Go and TypeScript.')).toBeInTheDocument()
+    expect(screen.queryByText('No notes')).not.toBeInTheDocument()
+  })
 })

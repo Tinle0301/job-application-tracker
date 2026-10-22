@@ -81,3 +81,5 @@ Every table has RLS enabled. All policies are scoped to the `authenticated` role
 | `undo_email_application(id)`                 | RPC: deletes it again while it is still at Applied              |
 | `dismiss_email_application(id)`              | RPC: hides a suggested application                              |
 | `reset_email_lookback()`                     | Trigger: a new application reopens the email look back (0009)   |
+
+0010 dates email-driven `status_history` rows by the email's `received_at`, and adds `email_new_applications.job_url` (the posting link found in the confirmation) and `described_at` (when the scan looked it up).

@@ -16,6 +16,7 @@ import {
   decideUpdate,
   gmailLink,
   gmailQuery,
+  jobLinkFromEmail,
   localDate,
   looksLikeConfirmation,
   matchApplication,
@@ -32,6 +33,7 @@ import {
   type GoogleOAuth,
 } from '../_shared/gmail.ts'
 import { fail, ok, preflight } from '../_shared/http.ts'
+import { fetchPosting } from '../_shared/posting.ts'
 import { callLlmTool, DEFAULT_MODEL, LlmError } from '../_shared/llm.ts'
 import {
   CONFIRM_SYSTEM,
@@ -304,6 +306,54 @@ async function addFromConfirmations(
   return complete
 }
 
+/** Job postings looked up per scan (each is a page fetch). */
+const MAX_POSTINGS = 5
+
+/**
+ * Fills in the posting link and job description of applications added from
+ * confirmation emails: finds the job's link in the email (or uses the one the
+ * user set), fetches the posting, and fills only fields that are still empty.
+ * Each one is looked up once.
+ */
+async function describeFromEmails(db: SupabaseClient, userId: string, accessToken: string): Promise<void> {
+  const { data: rows } = await db
+    .from('email_new_applications')
+    .select('id, message_id, application_id')
+    .eq('user_id', userId)
+    .eq('state', 'created')
+    .is('described_at', null)
+    .not('application_id', 'is', null)
+    .order('received_at', { ascending: false })
+    .limit(MAX_POSTINGS)
+  await mapLimit(rows ?? [], MAX_POSTINGS, async (r) => {
+    let jobUrl = ''
+    try {
+      const { data: app } = await db
+        .from('applications')
+        .select('url, job_description')
+        .eq('id', r.application_id)
+        .maybeSingle()
+      const link = app && (app.url || jobLinkFromEmail(await getMessage(accessToken, r.message_id, 'full')))
+      if (app && link) {
+        const posting = await fetchPosting(link).catch(() => ({ text: '', url: link }))
+        jobUrl = (app.url || posting.url).slice(0, 2000)
+        const fill: Record<string, string> = {}
+        if (!app.url && /^https:\/\//i.test(jobUrl)) fill.url = jobUrl
+        if (!app.job_description && posting.text.length >= 200) fill.job_description = posting.text.slice(0, 30000)
+        if (Object.keys(fill).length) await db.from('applications').update(fill).eq('id', r.application_id)
+      }
+    } catch (e) {
+      // Gmail trouble: try again on the next check. Anything else: give up on this one.
+      if (e instanceof GmailError || e instanceof GoogleAuthError) return
+      console.error('email-scan posting lookup failed:', e instanceof Error ? e.message : e)
+    }
+    await db
+      .from('email_new_applications')
+      .update({ described_at: new Date().toISOString(), job_url: /^https:\/\//i.test(jobUrl) ? jobUrl : '' })
+      .eq('id', r.id)
+  })
+}
+
 async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZone?: string): Promise<ScanResult> {
   const { data: conn } = await db
     .from('email_connections')
@@ -365,6 +415,7 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
     apps,
     result,
   )
+  await describeFromEmails(db, userId, accessToken)
   if (!apps.length) return await finish()
 
   // Every matched email is listed under its application. While the look-back

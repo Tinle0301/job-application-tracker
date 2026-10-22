@@ -4,6 +4,7 @@
 // No Deno APIs, so Vitest can test it.
 
 import { htmlToText } from './html.ts'
+import { knownSource } from './jobSources.ts'
 
 export type Stage = 'wishlist' | 'applied' | 'assessment' | 'interviewing' | 'offer' | 'rejected' | 'withdrawn'
 
@@ -95,6 +96,40 @@ function findPart(part: GmailPart | undefined, mime: string): string {
     if (found) return found
   }
   return ''
+}
+
+const LINK_SKIP =
+  /unsubscribe|optout|opt-out|privacy|preferences|terms|legal|cookie|help|support|faq|login|signin|sign-in|password|account|mailto:|facebook\.|twitter\.|x\.com\/|instagram\.|youtube\.|tiktok\.|glassdoor\.|apps\.apple\.|play\.google\.|linkedin\.com\/(company|in|feed)/i
+const LINK_JOB_PATH =
+  /\/(jobs?|positions?|postings?|requisitions?|req|openings?|vacanc(y|ies))(\/|$|\?|-)|jobid=|job_id=|gh_jid=|reqid=/i
+const LINK_JOB_TEXT =
+  /view (the )?(job|position|posting|role)|job (description|details|posting)|see (the )?(job|position|role)/i
+
+/**
+ * The link to the job posting in an email (a confirmation usually has one),
+ * or ''. Job-board links score highest, then links whose path or text says
+ * job; links to unsubscribe, sign in, social sites and the like are skipped.
+ */
+export function jobLinkFromEmail(m: GmailMessage): string {
+  const html = findPart(m.payload, 'text/html')
+  const found: { url: string; text: string }[] = []
+  for (const a of html.matchAll(/<a\b[^>]*?href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi))
+    found.push({ url: a[1].replace(/&amp;/g, '&').trim(), text: htmlToText(a[2]) })
+  for (const u of findPart(m.payload, 'text/plain').matchAll(/https:\/\/[^\s<>"')\]]+/g))
+    found.push({ url: u[0], text: '' })
+
+  let best = { url: '', score: 0 }
+  for (const { url, text } of found) {
+    if (!/^https:\/\//i.test(url) || url.length > 2000) continue
+    const board = knownSource(url) !== null
+    if (!board && LINK_SKIP.test(url)) continue
+    let score = board ? 3 : 0
+    // A job page has an id in it; a bare /jobs link is the job list.
+    if (LINK_JOB_PATH.test(url)) score += /\d{4,}/.test(url) ? 2 : 1
+    if (LINK_JOB_TEXT.test(text)) score += 2
+    if (score > best.score) best = { url, score }
+  }
+  return best.score >= 2 ? best.url : ''
 }
 
 /** Plain-text body: the text/plain part, else the HTML part as text. */
