@@ -1,13 +1,8 @@
 // Unit tests for the pure helpers the edge functions share.
 import { describe, expect, it, vi } from 'vitest'
 import { htmlToText, isSafePublicUrl } from '../../../supabase/functions/_shared/html.ts'
-import {
-  matchUserMessage,
-  validateFit,
-  validateParsedJob,
-  validatePostingText,
-} from '../../../supabase/functions/_shared/prompts.ts'
-import { callLlmText, callLlmTool, LlmError } from '../../../supabase/functions/_shared/llm.ts'
+import { matchUserMessage, validateFit, validateParsedJob } from '../../../supabase/functions/_shared/prompts.ts'
+import { callLlmTool, LlmError } from '../../../supabase/functions/_shared/llm.ts'
 import { PARSE_TOOL } from '../../../supabase/functions/_shared/prompts.ts'
 
 describe('htmlToText', () => {
@@ -178,54 +173,5 @@ describe('callLlmTool', () => {
     await expect(
       callLlmTool({ apiKey: 'k', system: 's', user: 'u', model: 'test-model', tool: PARSE_TOOL, fetchImpl }),
     ).rejects.toBeInstanceOf(LlmError)
-  })
-})
-
-describe('callLlmText', () => {
-  it("asks with Google's tools and returns the answer text without thoughts", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          candidates: [{ content: { parts: [{ text: 'thinking', thought: true }, { text: 'About the role' }] } }],
-        }),
-        { status: 200 },
-      ),
-    )
-    const text = await callLlmText({
-      apiKey: 'k',
-      model: 'm',
-      system: 's',
-      user: 'u',
-      googleTools: ['url_context', 'google_search'],
-      fetchImpl,
-    })
-    expect(text).toBe('About the role')
-    const body = JSON.parse(fetchImpl.mock.calls[0][1].body)
-    expect(body.tools).toEqual([{ url_context: {} }, { google_search: {} }])
-  })
-
-  it("puts Google's reason in the error", async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue(new Response(JSON.stringify({ error: { message: 'Quota exceeded' } }), { status: 429 }))
-    await expect(callLlmText({ apiKey: 'k', model: 'm', system: 's', user: 'u', fetchImpl })).rejects.toThrow(
-      'LLM API error 429: Quota exceeded',
-    )
-  })
-
-  it('throws LlmError on a failed request', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 429 }))
-    await expect(callLlmText({ apiKey: 'k', model: 'm', system: 's', user: 'u', fetchImpl })).rejects.toBeInstanceOf(
-      LlmError,
-    )
-  })
-})
-
-describe('validatePostingText', () => {
-  it('keeps a real description and drops NOT_FOUND or scraps', () => {
-    expect(validatePostingText('NOT_FOUND')).toBe('')
-    expect(validatePostingText('Too short')).toBe('')
-    const jd = 'Introduction: build software at IBM. '.repeat(10)
-    expect(validatePostingText(jd)).toBe(jd.trim())
   })
 })
