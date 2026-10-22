@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
-import type { Application } from '@backend/models/types'
+import { useEffect, useMemo, useState } from 'react'
+import type { Application, ApplicationInput } from '@backend/models/types'
 import type { TrackerApi } from '@backend/services/api'
 import { useApplications } from '../hooks/useApplications'
 import { applyFilters, DEFAULT_FILTERS } from '../lib/filters'
 import { exportJson, parseImport } from '../lib/importExport'
+import { findApplicationForPage, readPageImport } from '../lib/pageImport'
 import { StatsBar } from './StatsBar'
 import { Toolbar } from './Toolbar'
 import { ApplicationTable } from './ApplicationTable'
@@ -27,6 +28,27 @@ export function Tracker({ api, userEmail, onSignOut }: Props) {
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [editing, setEditing] = useState<Application | 'new' | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
+  const [prefill, setPrefill] = useState<Partial<ApplicationInput>>()
+  // A job page sent by the "Save job description" bookmark.
+  const [pageImport, setPageImport] = useState(() => readPageImport(window.location.hash))
+
+  useEffect(() => {
+    if (window.location.hash.startsWith('#jd=')) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    }
+  }, [])
+  // Once the list is loaded, open the matching application (or a new one) with the description filled in.
+  if (pageImport && !loading) {
+    const app = findApplicationForPage(apps, pageImport.url)
+    setPageImport(null)
+    setPrefill(app ? { jobDescription: pageImport.text } : { url: pageImport.url, jobDescription: pageImport.text })
+    setEditing(app ?? 'new')
+  }
+
+  const closeForm = () => {
+    setEditing(null)
+    setPrefill(undefined)
+  }
 
   const visible = useMemo(() => applyFilters(apps, filters), [apps, filters])
 
@@ -126,10 +148,11 @@ export function Tracker({ api, userEmail, onSignOut }: Props) {
         <ApplicationForm
           api={api}
           initial={editing === 'new' ? undefined : editing}
-          onCancel={() => setEditing(null)}
+          prefill={prefill}
+          onCancel={closeForm}
           onSubmit={async (input) => {
             const saved = editing === 'new' ? await create(input) : await update(editing.id, input)
-            if (saved) setEditing(null)
+            if (saved) closeForm()
           }}
         />
       )}

@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Application, ApplicationEmail, FitAnalysis, Status } from '@backend/models/types'
 import type { TrackerApi } from '@backend/services/api'
 import { lastUpdated } from '../lib/filters'
+import { bookmarkletHref } from '../lib/pageImport'
 import { FitBadge } from './FitBadge'
 import { FitPanel } from './FitPanel'
 import { StatusSelect } from './StatusSelect'
@@ -178,6 +179,12 @@ function Row({
                         : '. Add the job posting link with Edit to fill in the job description.')}
                   </p>
                 )}
+                {!app.jobDescription && app.url && (
+                  <p className="text-stone-500">
+                    Some careers sites can't be read automatically. Drag <BookmarkLink /> to your bookmarks bar once,
+                    then open the job posting and click it there to save its description.
+                  </p>
+                )}
               </div>
               {api.aiEnabled && <FitPanel app={app} api={api} onAnalyzed={(a) => onAnalyzed(app.id, a)} />}
             </div>
@@ -186,6 +193,22 @@ function Row({
         </tr>
       )}
     </>
+  )
+}
+
+/** The "Save job description" bookmark, to drag to the bookmarks bar. */
+function BookmarkLink() {
+  const ref = useRef<HTMLAnchorElement>(null)
+  // React refuses javascript: links in JSX, so the bookmark's code is set directly.
+  useEffect(() => ref.current?.setAttribute('href', bookmarkletHref(window.location.origin)), [])
+  return (
+    <a
+      ref={ref}
+      onClick={(e) => e.preventDefault()}
+      className="rounded border border-stone-300 bg-white px-1.5 py-0.5 font-medium text-stone-700"
+    >
+      Save job description
+    </a>
   )
 }
 
