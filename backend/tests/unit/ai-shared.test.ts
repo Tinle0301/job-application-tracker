@@ -204,6 +204,15 @@ describe('callLlmText', () => {
     expect(body.tools).toEqual([{ url_context: {} }, { google_search: {} }])
   })
 
+  it("puts Google's reason in the error", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ error: { message: 'Quota exceeded' } }), { status: 429 }))
+    await expect(callLlmText({ apiKey: 'k', model: 'm', system: 's', user: 'u', fetchImpl })).rejects.toThrow(
+      'LLM API error 429: Quota exceeded',
+    )
+  })
+
   it('throws LlmError on a failed request', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 429 }))
     await expect(callLlmText({ apiKey: 'k', model: 'm', system: 's', user: 'u', fetchImpl })).rejects.toBeInstanceOf(

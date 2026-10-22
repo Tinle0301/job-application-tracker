@@ -311,6 +311,13 @@ async function addFromConfirmations(
 /** Job postings fetched per scan (each is a page fetch). */
 const MAX_POSTINGS = 5
 
+/** Ways to ask Google for a posting, tried in order when the free tier turns one down. */
+const POSTING_TOOLS: ('url_context' | 'google_search')[][] = [
+  ['url_context', 'google_search'],
+  ['google_search'],
+  ['url_context'],
+]
+
 /**
  * Fills in job postings:
  * 1. for applications added from confirmation emails, looks for the job's
@@ -355,37 +362,49 @@ async function fillPostings(db: SupabaseClient, userId: string, accessToken: str
 
   const { data: apps } = await db
     .from('applications')
-    .select('id, url, posting_checked_url')
+    .select('id, company, role, url, posting_checked_url')
     .eq('user_id', userId)
     .neq('url', '')
     .eq('job_description', '')
     .order('updated_at', { ascending: false })
     .limit(50)
-  // Marked per link; the version prefix makes links checked by the fetch-only lookup get one more try.
-  const checked = (url: string) => `v2:${url}`.slice(0, 2000)
+  // Marked per link; bumping the version prefix gives every unfilled link one more try after a lookup change.
+  const checked = (url: string) => `v3:${url}`.slice(0, 2000)
   const todo = (apps ?? []).filter((a) => checked(a.url) !== a.posting_checked_url).slice(0, MAX_POSTINGS)
   await mapLimit(todo, MAX_POSTINGS, async (a) => {
     let text = (await fetchPosting(a.url).catch(() => ({ text: '', url: a.url }))).text
     if (text.length < 200) text = ''
     if (!text) {
-      // Out of AI calls for today: leave the link for a later check.
-      if (!(await aiQuotaLeft(db, userId))) return
-      try {
-        text = validatePostingText(
-          await callLlmText({
-            apiKey: cfg.apiKey,
-            model: cfg.model,
-            system: POSTING_SYSTEM,
-            user: `Job posting link: ${a.url}`,
-            googleTools: ['url_context', 'google_search'],
-          }),
-        )
-        await db.from('ai_usage').insert({ user_id: userId, kind: 'email' })
-      } catch (e) {
-        // Busy or out of quota: try this link again on the next check.
-        if (e instanceof LlmError && (e.status === 429 || e.status >= 500)) return
-        console.error('email-scan posting read failed:', e instanceof Error ? e.message : e)
+      // Google's reader first; when the free tier turns one tool down, try each on its own.
+      for (const googleTools of POSTING_TOOLS) {
+        // Out of AI calls for today: leave the link for a later check.
+        if (!(await aiQuotaLeft(db, userId))) {
+          console.warn('email-scan posting read waits: daily AI limit reached')
+          return
+        }
+        try {
+          text = validatePostingText(
+            await callLlmText({
+              apiKey: cfg.apiKey,
+              model: cfg.model,
+              system: POSTING_SYSTEM,
+              user: `Job posting link: ${a.url}\nCompany: ${a.company}\nJob title: ${a.role}`,
+              googleTools,
+            }),
+          )
+          await db.from('ai_usage').insert({ user_id: userId, kind: 'email' })
+          break
+        } catch (e) {
+          await db.from('ai_usage').insert({ user_id: userId, kind: 'email' })
+          console.warn(`email-scan posting read (${googleTools.join('+')}) failed:`, e instanceof Error ? e.message : e)
+          // Busy: try this link again on the next check.
+          if (e instanceof LlmError && e.status >= 500) return
+          if (!(e instanceof LlmError && (e.status === 429 || e.status === 400))) break
+          // Rate limited on every way of asking: try again on the next check.
+          if (e.status === 429 && googleTools === POSTING_TOOLS[POSTING_TOOLS.length - 1]) return
+        }
       }
+      if (!text) console.warn('email-scan posting read found no description for', new URL(a.url).hostname)
     }
     const fill: Record<string, string> = { posting_checked_url: checked(a.url) }
     if (text) fill.job_description = text.slice(0, 30000)
