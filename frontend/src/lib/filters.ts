@@ -10,6 +10,11 @@ export interface FilterState {
 
 export const DEFAULT_FILTERS: FilterState = { query: '', status: 'all', sort: 'updated' }
 
+/** When the job last had news: its newest email, or its last edit when no email came in. */
+export function lastUpdated(app: Application): string {
+  return (app.emails ?? []).reduce((latest, e) => (e.receivedAt > latest ? e.receivedAt : latest), '') || app.updatedAt
+}
+
 export function applyFilters(apps: Application[], f: FilterState): Application[] {
   const q = f.query.trim().toLowerCase()
   const filtered = apps.filter((a) => {
@@ -27,7 +32,7 @@ export function applyFilters(apps: Application[], f: FilterState): Application[]
       sorted.sort((a, b) => (b.appliedOn ?? '').localeCompare(a.appliedOn ?? ''))
       break
     default:
-      sorted.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      sorted.sort((a, b) => lastUpdated(b).localeCompare(lastUpdated(a)))
   }
   return sorted
 }
