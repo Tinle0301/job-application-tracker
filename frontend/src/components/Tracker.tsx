@@ -20,19 +20,8 @@ interface Props {
 }
 
 export function Tracker({ api, userEmail, onSignOut }: Props) {
-  const {
-    apps,
-    revision,
-    loading,
-    error,
-    create,
-    update,
-    updateStatus,
-    remove,
-    setAnalysis,
-    setDescription,
-    reload,
-  } = useApplications(api)
+  const { apps, revision, loading, error, create, update, updateStatus, remove, setAnalysis, setDescription, reload } =
+    useApplications(api)
   const [tab, setTab] = useState<Tab>('applications')
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [editing, setEditing] = useState<Application | 'new' | null>(null)
@@ -82,11 +71,7 @@ export function Tracker({ api, userEmail, onSignOut }: Props) {
           <StatsBar apps={apps} />
           <UsageMeter api={api} version={revision} />
           {api.emailSyncEnabled && <EmailSync api={api} apps={apps} onStatusesChanged={reload} />}
-          <Toolbar
-            filters={filters}
-            onChange={setFilters}
-            onAdd={() => setEditing('new')}
-          />
+          <Toolbar filters={filters} onChange={setFilters} onAdd={() => setEditing('new')} />
 
           {error && (
             <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">
