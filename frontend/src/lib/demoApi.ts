@@ -192,6 +192,10 @@ export function createDemoApi(storage: Storage | null = safeLocalStorage()): Tra
       return AI_UNAVAILABLE
     },
 
+    async readJobDescription() {
+      return fail('UNAVAILABLE_IN_DEMO', 'Reading job postings needs the Supabase backend. See docs/SETUP.md.')
+    },
+
     emailSyncEnabled: false,
     getEmailConnection: async () => ok(null),
     startEmailConnect: async () => EMAIL_UNAVAILABLE,

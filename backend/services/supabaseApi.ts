@@ -317,6 +317,16 @@ export function createSupabaseApi(
       return invokeFunction<FitAnalysis>(db, 'match-resume', { applicationId })
     },
 
+    async readJobDescription(applicationId) {
+      const result = await invokeFunction<{ description: string }>(
+        db,
+        'read-posting',
+        { applicationId },
+        "Couldn't read the job posting right now. Please try again.",
+      )
+      return result.error ? result : ok(result.data.description)
+    },
+
     emailSyncEnabled: options.emailSyncEnabled ?? false,
 
     async getEmailConnection() {

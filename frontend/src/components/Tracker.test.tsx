@@ -522,30 +522,29 @@ describe('Tracker email sync (mocked supabase API)', () => {
     expect(screen.queryByText('No notes')).not.toBeInTheDocument()
   })
 
-  it('opens the matching job with the description the bookmark sent', async () => {
+  it('reads the job description from the posting link with Get description', async () => {
     const base = createDemoApi(localStorage)
     await base.createApplication({
       company: 'IBM',
       role: 'Software Developer Intern',
       location: '',
-      url: 'https://careers.ibm.com/en_US/careers/JobDetail/Software-Developer-Intern-2027/128497',
+      url: 'https://careers.ibm.com/job/128497',
       status: 'applied',
       appliedOn: '2026-10-14',
       salary: '',
       notes: '',
       jobDescription: '',
     })
-    const page = {
-      u: 'https://careers.ibm.com/en_US/careers/JobDetail/Software-Developer-Intern-2027/128497?x=1',
-      t: 'Write code.',
-    }
-    window.history.replaceState(null, '', '/#jd=' + encodeURIComponent(JSON.stringify(page)))
-    render(<Tracker api={base} />)
-    expect(await screen.findByLabelText('Job description')).toHaveValue('Write code.')
-    expect(screen.getByLabelText('Company *')).toHaveValue('IBM')
-    expect(window.location.hash).toBe('')
-    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+    const readJobDescription = vi
+      .fn()
+      .mockResolvedValueOnce({ data: null, error: { code: 'READER_BUSY', message: 'The page reader is busy.' } })
+      .mockResolvedValueOnce({ data: 'Build cloud tools.', error: null })
+    render(<Tracker api={{ ...base, mode: 'supabase', readJobDescription }} userEmail="a@b.co" />)
     fireEvent.click(await screen.findByRole('button', { name: 'IBM' }))
-    expect(screen.getByText('Write code.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Get description' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('The page reader is busy.')
+    fireEvent.click(screen.getByRole('button', { name: 'Get description' }))
+    expect(await screen.findByText('Build cloud tools.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Get description' })).not.toBeInTheDocument()
   })
 })

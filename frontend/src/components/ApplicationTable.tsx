@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import type { Application, ApplicationEmail, FitAnalysis, Status } from '@backend/models/types'
 import type { TrackerApi } from '@backend/services/api'
 import { lastUpdated } from '../lib/filters'
-import { bookmarkletHref } from '../lib/pageImport'
 import { FitBadge } from './FitBadge'
 import { FitPanel } from './FitPanel'
 import { StatusSelect } from './StatusSelect'
@@ -12,6 +11,7 @@ interface Props {
   api: TrackerApi
   apps: Application[]
   onAnalyzed: (id: string, analysis: FitAnalysis) => void
+  onDescription: (id: string, description: string) => void
   onStatusChange: (id: string, status: Status) => void
   onEdit: (app: Application) => void
   onDelete: (app: Application) => void
@@ -23,7 +23,7 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export function ApplicationTable({ api, apps, onAnalyzed, onStatusChange, onEdit, onDelete }: Props) {
+export function ApplicationTable({ api, apps, onAnalyzed, onDescription, onStatusChange, onEdit, onDelete }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   if (apps.length === 0) {
@@ -58,6 +58,7 @@ export function ApplicationTable({ api, apps, onAnalyzed, onStatusChange, onEdit
               open={expanded === app.id}
               onToggle={() => setExpanded(expanded === app.id ? null : app.id)}
               onStatusChange={onStatusChange}
+              onDescription={onDescription}
               onEdit={onEdit}
               onDelete={onDelete}
             />
@@ -72,6 +73,7 @@ function Row({
   app,
   api,
   onAnalyzed,
+  onDescription,
   open,
   onToggle,
   onStatusChange,
@@ -174,16 +176,12 @@ function Row({
                   <p className="text-stone-400">
                     No notes
                     {api.emailSyncEnabled &&
-                      (app.url
-                        ? '. The job description is filled in from the posting link on the next inbox check.'
-                        : '. Add the job posting link with Edit to fill in the job description.')}
+                      !app.url &&
+                      '. Add the job posting link with Edit to fill in the job description.'}
                   </p>
                 )}
-                {!app.jobDescription && app.url && (
-                  <p className="text-stone-500">
-                    Some careers sites can't be read automatically. Drag <BookmarkLink /> to your bookmarks bar once,
-                    then open the job posting and click it there to save its description.
-                  </p>
+                {api.mode === 'supabase' && app.url && !app.jobDescription && (
+                  <GetDescription api={api} appId={app.id} onDescription={(d) => onDescription(app.id, d)} />
                 )}
               </div>
               {api.aiEnabled && <FitPanel app={app} api={api} onAnalyzed={(a) => onAnalyzed(app.id, a)} />}
@@ -196,19 +194,40 @@ function Row({
   )
 }
 
-/** The "Save job description" bookmark, to drag to the bookmarks bar. */
-function BookmarkLink() {
-  const ref = useRef<HTMLAnchorElement>(null)
-  // React refuses javascript: links in JSX, so the bookmark's code is set directly.
-  useEffect(() => ref.current?.setAttribute('href', bookmarkletHref(window.location.origin)), [])
+function GetDescription({
+  api,
+  appId,
+  onDescription,
+}: {
+  api: TrackerApi
+  appId: string
+  onDescription: (description: string) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const read = async () => {
+    setBusy(true)
+    setError(null)
+    const { data, error } = await api.readJobDescription(appId)
+    setBusy(false)
+    if (error) setError(error.message)
+    else onDescription(data)
+  }
   return (
-    <a
-      ref={ref}
-      onClick={(e) => e.preventDefault()}
-      className="rounded border border-stone-300 bg-white px-1.5 py-0.5 font-medium text-stone-700"
-    >
-      Save job description
-    </a>
+    <div>
+      <button
+        onClick={read}
+        disabled={busy}
+        className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-100 disabled:opacity-60"
+      >
+        {busy ? 'Reading the posting…' : 'Get description'}
+      </button>
+      {error && (
+        <p role="alert" className="mt-1 text-rose-700">
+          {error}
+        </p>
+      )}
+    </div>
   )
 }
 

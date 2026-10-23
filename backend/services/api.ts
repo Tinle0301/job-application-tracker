@@ -34,6 +34,8 @@ export interface TrackerApi {
   parseJobPosting(source: { text?: string; url?: string }): Promise<Result<ParsedJob>>
   /** AI: score the default resume against an application's job description. */
   analyzeFit(applicationId: string): Promise<Result<FitAnalysis>>
+  /** Reads an application's posting link now and saves the text as its job description (no AI). */
+  readJobDescription(applicationId: string): Promise<Result<string>>
 
   /** True only when the email edge functions are deployed (VITE_ENABLE_EMAIL_SYNC=true). */
   readonly emailSyncEnabled: boolean

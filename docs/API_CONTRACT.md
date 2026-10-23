@@ -58,6 +58,10 @@ Returns `ParsedJob`: `company`, `role`, `location`, `salary`, `employmentType`, 
 
 Returns `FitAnalysis`: `id`, `score` (0–100), `matchedSkills[]`, `missingSkills[]`, `summary`, `suggestions[]` (≤ 5), `model`, `createdAt`. The result is also stored in `ai_analyses`.
 
+### `readJobDescription(applicationId)` → `read-posting`
+
+Reads the application's posting link (through a browser page reader for script-only careers sites; no AI call), saves the text as its `job_description` and returns it. Errors: `NO_LINK` (400), `NOT_FOUND` (404), `FETCH_FAILED` (422), `READER_BUSY` (503).
+
 ### AI error codes
 
 | Code                     | HTTP    | When                                                      |

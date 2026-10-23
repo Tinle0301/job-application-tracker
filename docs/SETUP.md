@@ -41,6 +41,7 @@ supabase secrets set GEMINI_MODEL=gemini-flash-latest
 supabase secrets set AI_DAILY_LIMIT=50
 supabase functions deploy parse-job
 supabase functions deploy match-resume
+supabase functions deploy read-posting
 ```
 
 Then set `VITE_ENABLE_AI=true` in `.env` (and in Vercel) and redeploy; until then the AI controls stay hidden.
