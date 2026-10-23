@@ -8,7 +8,7 @@ export interface FilterState {
   sort: SortKey
 }
 
-export const DEFAULT_FILTERS: FilterState = { query: '', status: 'all', sort: 'updated' }
+export const DEFAULT_FILTERS: FilterState = { query: '', status: 'all', sort: 'applied' }
 
 /** When the job last had news: its newest email, or its last edit when no email came in. */
 export function lastUpdated(app: Application): string {
@@ -28,11 +28,14 @@ export function applyFilters(apps: Application[], f: FilterState): Application[]
     case 'company':
       sorted.sort((a, b) => a.company.localeCompare(b.company))
       break
-    case 'applied':
-      sorted.sort((a, b) => (b.appliedOn ?? '').localeCompare(a.appliedOn ?? ''))
+    case 'updated':
+      sorted.sort((a, b) => lastUpdated(b).localeCompare(lastUpdated(a)))
       break
     default:
-      sorted.sort((a, b) => lastUpdated(b).localeCompare(lastUpdated(a)))
+      // Newest application first; same-day ones by their latest news. No date goes last.
+      sorted.sort(
+        (a, b) => (b.appliedOn ?? '').localeCompare(a.appliedOn ?? '') || lastUpdated(b).localeCompare(lastUpdated(a)),
+      )
   }
   return sorted
 }
