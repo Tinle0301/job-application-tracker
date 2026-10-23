@@ -190,6 +190,15 @@ describe('createSupabaseApi', () => {
     const { db: db3 } = fakeDb({}, async () => ({ data: null, error: new Error('network') }))
     expect((await createSupabaseApi(db3).analyzeFit('a1')).error?.code).toBe('AI_REQUEST_FAILED')
   })
+
+  it('reads a job description through read-posting', async () => {
+    const { db, invoke } = fakeDb({}, async () => ({
+      data: { data: { description: 'About the role' }, error: null },
+      error: null,
+    }))
+    expect((await createSupabaseApi(db).readJobDescription('a1')).data).toBe('About the role')
+    expect(invoke).toHaveBeenCalledWith('read-posting', { body: { applicationId: 'a1' } })
+  })
 })
 
 describe('usage limits', () => {

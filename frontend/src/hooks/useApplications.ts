@@ -61,5 +61,8 @@ export function useApplications(api: TrackerApi) {
     /** Stores a fresh fit analysis on its application after the AI call returns. */
     setAnalysis: (id: string, analysis: FitAnalysis) =>
       setApps((prev) => prev.map((a) => (a.id === id ? { ...a, latestAnalysis: analysis } : a))),
+    /** Stores a job description the server read from the posting link. */
+    setDescription: (id: string, jobDescription: string) =>
+      setApps((prev) => prev.map((a) => (a.id === id ? { ...a, jobDescription } : a))),
   }
 }

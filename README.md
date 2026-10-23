@@ -43,6 +43,7 @@ backend/
 supabase/functions/
   parse-job/              Posting text or URL → structured fields
   match-resume/           Resume × job description → fit analysis
+  read-posting/           Posting link → job description (no AI)
   email-connect/          Gmail OAuth connect / disconnect
   email-scan/             Inbox → new applications from confirmations, status updates
   _shared/                LLM client, prompts + JSON schemas + validators, HTML/URL guards

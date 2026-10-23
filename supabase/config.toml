@@ -7,6 +7,9 @@ verify_jwt = true
 [functions.match-resume]
 verify_jwt = true
 
+[functions.read-posting]
+verify_jwt = true
+
 # Google redirects to email-connect without a Supabase session, and a
 # scheduled email-scan authenticates with EMAIL_SCAN_SECRET; both check the
 # caller themselves (docs/EMAIL_SYNC.md).
