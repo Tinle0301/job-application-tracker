@@ -11,7 +11,7 @@ Track job applications from wishlist to offer, with two AI helpers: **paste a jo
 - **One-click status updates**: Wishlist → Applied → Assessment → Interviewing → Offer, plus Rejected and Withdrawn.
 - **Automatic timeline**: a Postgres trigger records every status change, so history can't drift from the data.
 - **Pipeline stats**: submitted, active, interviews, offers, response rate and interview rate.
-- **Search, filter, sort, import/export JSON.**
+- **Search, filter, sort.**
 - **AI auto-fill** _(optional: off until enabled)_: paste a job link (LinkedIn, Greenhouse, Lever, Ashby, Workday or most career pages) or the posting text; company, role, location, salary, requirements and the full description are filled in. Only empty fields are touched.
 - **AI resume match** _(optional: off until enabled)_: a 0–100 fit score per application with matched and missing skills and up to five resume suggestions. The latest score shows in the list.
 - **Email sync** _(optional: off until enabled)_: connect the Gmail you apply from (read-only). "Thanks for applying" emails add new applications automatically (unsure ones wait as suggestions), and statuses move when assessment, interview, offer or rejection emails arrive. Each change can be undone. See [docs/EMAIL_SYNC.md](docs/EMAIL_SYNC.md).
@@ -33,7 +33,7 @@ Track job applications from wishlist to offer, with two AI helpers: **paste a jo
 frontend/                 React app (Vite root)
   src/components/         Tracker, ApplicationTable, ApplicationForm, AutoFill, FitPanel, ResumePanel, …
   src/hooks/              useApplications – state over a TrackerApi
-  src/lib/                demoApi (localStorage), filters, stats, import/export
+  src/lib/                demoApi (localStorage), filters, stats
 backend/
   models/types.ts         Domain types shared by UI, services and tests
   services/               TrackerApi contract, Supabase implementation, validation, Result helpers

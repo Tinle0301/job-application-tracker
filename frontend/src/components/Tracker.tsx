@@ -3,7 +3,6 @@ import type { Application } from '@backend/models/types'
 import type { TrackerApi } from '@backend/services/api'
 import { useApplications } from '../hooks/useApplications'
 import { applyFilters, DEFAULT_FILTERS } from '../lib/filters'
-import { exportJson, parseImport } from '../lib/importExport'
 import { StatsBar } from './StatsBar'
 import { Toolbar } from './Toolbar'
 import { ApplicationTable } from './ApplicationTable'
@@ -30,7 +29,6 @@ export function Tracker({ api, userEmail, onSignOut }: Props) {
     update,
     updateStatus,
     remove,
-    importMany,
     setAnalysis,
     setDescription,
     reload,
@@ -38,27 +36,8 @@ export function Tracker({ api, userEmail, onSignOut }: Props) {
   const [tab, setTab] = useState<Tab>('applications')
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [editing, setEditing] = useState<Application | 'new' | null>(null)
-  const [importError, setImportError] = useState<string | null>(null)
 
   const visible = useMemo(() => applyFilters(apps, filters), [apps, filters])
-
-  const handleImport = async (file: File) => {
-    try {
-      setImportError(null)
-      await importMany(parseImport(await file.text()))
-    } catch (e) {
-      setImportError(e instanceof Error ? e.message : 'Import failed')
-    }
-  }
-
-  const handleExport = () => {
-    const blob = new Blob([exportJson(apps)], { type: 'application/json' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `applications-${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(a.href)
-  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8">
@@ -107,13 +86,11 @@ export function Tracker({ api, userEmail, onSignOut }: Props) {
             filters={filters}
             onChange={setFilters}
             onAdd={() => setEditing('new')}
-            onImport={handleImport}
-            onExport={handleExport}
           />
 
-          {(error || importError) && (
+          {error && (
             <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">
-              {error ?? importError}
+              {error}
             </p>
           )}
 

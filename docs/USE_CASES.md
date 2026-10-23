@@ -30,8 +30,3 @@
 3. A score, matched and missing skills, a summary and suggestions appear; the **Fit** column shows the score.
 
 **Alternates:** no resume → `NO_RESUME` · description too short → button disabled / `NO_JOB_DESCRIPTION`.
-
-## UC-5 Back up and restore
-
-1. User clicks **Export** to download JSON.
-2. On another device, user clicks **Import** and picks the file; rows are validated and added.

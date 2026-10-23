@@ -56,8 +56,6 @@ export function useApplications(api: TrackerApi) {
     update: (id: string, input: ApplicationInput) => run(api.updateApplication(id, input), replace),
     updateStatus: (id: string, status: Status) => run(api.updateStatus(id, status), replace),
     remove: (id: string) => run(api.deleteApplication(id), () => setApps((prev) => prev.filter((a) => a.id !== id))),
-    importMany: (inputs: ApplicationInput[]) =>
-      run(api.importApplications(inputs), (created) => setApps((prev) => [...prev, ...created])),
     /** Stores a fresh fit analysis on its application after the AI call returns. */
     setAnalysis: (id: string, analysis: FitAnalysis) =>
       setApps((prev) => prev.map((a) => (a.id === id ? { ...a, latestAnalysis: analysis } : a))),
