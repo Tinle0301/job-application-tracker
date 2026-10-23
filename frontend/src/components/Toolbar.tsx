@@ -6,11 +6,9 @@ interface Props {
   filters: FilterState
   onChange: (f: FilterState) => void
   onAdd: () => void
-  onImport: (file: File) => void
-  onExport: () => void
 }
 
-export function Toolbar({ filters, onChange, onAdd, onImport, onExport }: Props) {
+export function Toolbar({ filters, onChange, onAdd }: Props) {
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center">
       <input
@@ -45,25 +43,6 @@ export function Toolbar({ filters, onChange, onAdd, onImport, onExport }: Props)
         <option value="company">Company A–Z</option>
       </select>
       <div className="flex gap-2 md:ml-auto">
-        <label className="cursor-pointer rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-100">
-          Import
-          <input
-            type="file"
-            accept="application/json"
-            className="sr-only"
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) onImport(file)
-              e.target.value = ''
-            }}
-          />
-        </label>
-        <button
-          onClick={onExport}
-          className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-100"
-        >
-          Export
-        </button>
         <button
           onClick={onAdd}
           className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
