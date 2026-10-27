@@ -167,6 +167,9 @@ async function invokeFunction<T>(
       } catch {
         /* fall through */
       }
+      // Supabase stopped the function for running too long (or out of resources).
+      if ([504, 546].includes(ctx.status))
+        return fail('FUNCTION_TIMEOUT', 'That took too long and was stopped. Please try again.')
     }
     return fail('AI_REQUEST_FAILED', unavailable)
   }

@@ -52,6 +52,16 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 const MAX_MESSAGES = 100
 const MAX_CLASSIFIED = 30
 const BATCH = 10
+/**
+ * Supabase stops a function after 150 s (free plan) and answers with a bare
+ * error page. The scan stops starting new work well before that, and the
+ * next check picks up the rest.
+ */
+const TIME_BUDGET_MS = 100_000
+/** A model call is only started with at least this long left. */
+const AI_CALL_MS = 40_000
+/** Job posting reads are only started with at least this long left (a page fetch plus the page reader can take 45 s). */
+const POSTING_READ_MS = 50_000
 
 interface ScanResult {
   scanned: number
@@ -115,15 +125,28 @@ async function aiQuotaLeft(db: SupabaseClient, userId: string): Promise<boolean>
   return (count ?? 0) < DAILY_AI_LIMIT
 }
 
-/** One model call; null when the model is rate limited (the scan stops and resumes next time). */
+/** Milliseconds left before the scan has to wrap up. */
+type Clock = () => number
+
+/** One model call; null when the model is rate limited or slow (the scan stops and resumes next time). */
 async function ask(
   db: SupabaseClient,
   userId: string,
   cfg: Settings,
+  timeLeft: Clock,
   prompt: { system: string; user: string; tool: typeof EMAIL_TOOL | typeof CONFIRM_TOOL },
 ): Promise<{ input: unknown } | null> {
+  if (timeLeft() < AI_CALL_MS) return null
   try {
-    const { input } = await callLlmTool({ apiKey: cfg.apiKey, model: cfg.model, ...prompt, maxTokens: 2000 })
+    const { input } = await callLlmTool({
+      apiKey: cfg.apiKey,
+      model: cfg.model,
+      ...prompt,
+      maxTokens: 2000,
+      // Retries included; a model still busy or slow is tried again on the next check.
+      timeoutMs: Math.min(60_000, timeLeft() - 5_000),
+      retryDelaysMs: [2000],
+    })
     await db.from('ai_usage').insert({ user_id: userId, kind: 'email' })
     return { input }
   } catch (e) {
@@ -166,7 +189,7 @@ async function addFromConfirmations(
   db: SupabaseClient,
   userId: string,
   cfg: Settings,
-  ctx: { accessToken: string; account: string; since: number; timeZone?: string },
+  ctx: { accessToken: string; account: string; since: number; timeZone?: string; timeLeft: Clock },
   apps: TrackedApplication[],
   result: ScanResult,
 ): Promise<boolean> {
@@ -196,7 +219,7 @@ async function addFromConfirmations(
   for (let i = 0; i < toRead.length; i += BATCH) {
     if (!(await aiQuotaLeft(db, userId))) return false
     const batch = toRead.slice(i, i + BATCH)
-    const answer = await ask(db, userId, cfg, {
+    const answer = await ask(db, userId, cfg, ctx.timeLeft, {
       system: CONFIRM_SYSTEM,
       user: confirmUserMessage(
         batch.map((e) => ({
@@ -319,7 +342,8 @@ const MAX_POSTINGS = 5
  *    with JavaScript (many careers sites) are read by a browser page reader
  *    instead; no AI call.
  */
-async function fillPostings(db: SupabaseClient, userId: string, accessToken: string): Promise<void> {
+async function fillPostings(db: SupabaseClient, userId: string, accessToken: string, timeLeft: Clock): Promise<void> {
+  if (timeLeft() < POSTING_READ_MS) return
   const { data: rows } = await db
     .from('email_new_applications')
     .select('id, message_id, application_id')
@@ -362,6 +386,7 @@ async function fillPostings(db: SupabaseClient, userId: string, accessToken: str
   // Marked per link; bumping the version prefix gives every unfilled link one more try after a lookup change.
   const checked = (url: string) => `v4:${url}`.slice(0, 2000)
   const todo = (apps ?? []).filter((a) => checked(a.url) !== a.posting_checked_url).slice(0, MAX_POSTINGS)
+  if (timeLeft() < POSTING_READ_MS) return
   await mapLimit(todo, MAX_POSTINGS, async (a) => {
     let text = ''
     try {
@@ -405,6 +430,7 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
   }
 
   const startedAt = new Date()
+  const timeLeft: Clock = () => startedAt.getTime() + TIME_BUDGET_MS - Date.now()
   const result: ScanResult = { scanned: 0, matched: 0, applied: 0, suggested: 0, added: 0, toAdd: 0, complete: true }
   let confirmationsComplete = true
   let emailsListed = false
@@ -438,11 +464,11 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
     db,
     userId,
     cfg,
-    { accessToken, account: own, since: sinceFor(conn.confirmations_scanned_at), timeZone },
+    { accessToken, account: own, since: sinceFor(conn.confirmations_scanned_at), timeZone, timeLeft },
     apps,
     result,
   )
-  await fillPostings(db, userId, accessToken)
+  await fillPostings(db, userId, accessToken, timeLeft)
   if (!apps.length) return await finish()
 
   // Every matched email is listed under its application. While the look-back
@@ -512,7 +538,7 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
     }
 
     const batch = toRead.slice(i, i + BATCH)
-    const answer = await ask(db, userId, cfg, {
+    const answer = await ask(db, userId, cfg, timeLeft, {
       system: EMAIL_SYSTEM,
       user: emailUserMessage(
         batch.map(({ email, match }) => ({
