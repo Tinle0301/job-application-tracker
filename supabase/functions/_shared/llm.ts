@@ -30,12 +30,16 @@ export async function callLlmTool(opts: {
   fetchImpl?: typeof fetch
   /** Waits before each retry when Google is busy (5xx). */
   retryDelaysMs?: number[]
+  /** Gives up after this long, retries included (thinking models can be slow). */
+  timeoutMs?: number
 }): Promise<{ input: unknown; model: string }> {
   const model = opts.model
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`
+  const signal = AbortSignal.timeout(opts.timeoutMs ?? 90000)
   const send = () =>
     (opts.fetchImpl ?? fetch)(url, {
       method: 'POST',
+      signal,
       headers: { 'content-type': 'application/json', 'x-goog-api-key': opts.apiKey },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: opts.system }] },
@@ -58,17 +62,24 @@ export async function callLlmTool(opts: {
         },
       }),
     })
-  // Google answers 500/503 when the model is overloaded; that usually passes within seconds.
-  let res = await send()
-  for (const delay of opts.retryDelaysMs ?? [2000, 5000]) {
-    if (res.status < 500) break
-    await new Promise((r) => setTimeout(r, delay))
-    res = await send()
-  }
-  if (!res.ok) throw new LlmError(res.status, `LLM API error ${res.status}`)
-  const body = (await res.json()) as {
+  type Body = {
     modelVersion?: string
     candidates?: { content?: { parts?: { functionCall?: { name?: string; args?: unknown } }[] } }[]
+  }
+  let body: Body
+  try {
+    // Google answers 500/503 when the model is overloaded; that usually passes within seconds.
+    let res = await send()
+    for (const delay of opts.retryDelaysMs ?? [2000, 5000]) {
+      if (res.status < 500) break
+      await new Promise((r) => setTimeout(r, delay))
+      res = await send()
+    }
+    if (!res.ok) throw new LlmError(res.status, `LLM API error ${res.status}`)
+    body = (await res.json()) as Body
+  } catch (e) {
+    if ((e as { name?: string })?.name === 'TimeoutError') throw new LlmError(504, 'LLM API timed out')
+    throw e
   }
   const call = body.candidates?.[0]?.content?.parts?.find((p) => p.functionCall?.name === opts.tool.name)
   if (!call?.functionCall) throw new LlmError(502, 'Model returned no structured output')

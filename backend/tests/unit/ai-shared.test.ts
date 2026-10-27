@@ -168,6 +168,19 @@ describe('callLlmTool', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3)
   })
 
+  it('gives up with a 504 when the model takes too long', async () => {
+    // Never answers; rejects once the request's signal aborts, like fetch does.
+    const fetchImpl = vi
+      .fn()
+      .mockImplementation(
+        (_url: string, init: RequestInit) =>
+          new Promise((_, reject) => init.signal!.addEventListener('abort', () => reject(init.signal!.reason))),
+      )
+    await expect(
+      callLlmTool({ apiKey: 'k', system: 's', user: 'u', model: 'm', tool: PARSE_TOOL, fetchImpl, timeoutMs: 20 }),
+    ).rejects.toMatchObject({ status: 504 })
+  })
+
   it('throws LlmError on HTTP errors', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 429 }))
     await expect(
