@@ -43,8 +43,21 @@ const apps: Application[] = [
 ]
 
 describe('applyFilters', () => {
-  it('sorts by most recently updated by default', () => {
-    expect(applyFilters(apps, DEFAULT_FILTERS).map((a) => a.id)).toEqual(['2', '3', '1'])
+  it('sorts by date applied, newest first, by default', () => {
+    expect(applyFilters(apps, DEFAULT_FILTERS).map((a) => a.id)).toEqual(['2', '1', '3'])
+  })
+
+  it('breaks same-day ties by latest update and puts jobs with no date last', () => {
+    const more: Application[] = [
+      ...apps,
+      { ...apps[0], id: '4', appliedOn: '2026-10-07', updatedAt: '2026-10-09' },
+      { ...apps[0], id: '5', appliedOn: null, updatedAt: '2026-10-30' },
+    ]
+    expect(applyFilters(more, DEFAULT_FILTERS).map((a) => a.id)).toEqual(['4', '2', '1', '3', '5'])
+  })
+
+  it('sorts by most recently updated', () => {
+    expect(applyFilters(apps, { ...DEFAULT_FILTERS, sort: 'updated' }).map((a) => a.id)).toEqual(['2', '3', '1'])
   })
 
   it('filters by status', () => {
@@ -77,6 +90,6 @@ describe('applyFilters', () => {
     )
     expect(lastUpdated(withEmails[0])).toBe('2026-10-20T10:00:00Z')
     expect(lastUpdated(apps[1])).toBe('2026-10-08')
-    expect(applyFilters(withEmails, DEFAULT_FILTERS)[0].company).toBe('NVIDIA')
+    expect(applyFilters(withEmails, { ...DEFAULT_FILTERS, sort: 'updated' })[0].company).toBe('NVIDIA')
   })
 })
