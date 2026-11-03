@@ -431,6 +431,50 @@ export function confirmationQuery(afterEpochSeconds: number): string {
   return `after:${Math.floor(afterEpochSeconds)} -from:me -in:chats -in:spam -in:trash (${phrases})`
 }
 
+/**
+ * Subject lines that confirm an application and name the company, read without
+ * an AI call. The role is set when the subject names it ('' otherwise).
+ */
+const CONFIRMATION_SUBJECTS: { re: RegExp; role?: number; company: number }[] = [
+  // "Your application for Software Engineer at Acme"
+  { re: /^your application for (.+?) (?:at|with) (.+)$/i, role: 1, company: 2 },
+  // "Thank you for applying to Acme", "Thanks for applying for Software Engineer at Acme"
+  {
+    re: /^(?:thank you|thanks) for (?:applying|your application) (?:for|to) (.+?) (?:at|with) (.+)$/i,
+    role: 1,
+    company: 2,
+  },
+  { re: /^(?:thank you|thanks) for (?:applying|your application) (?:to|at|with) (.+)$/i, company: 1 },
+  // Handshake: "Application sent to Acme — here's what's next"
+  { re: /^(?:your )?application (?:sent|submitted|received) (?:to|at|by) (.+)$/i, company: 1 },
+  // "Your application to Acme"
+  { re: /^your application (?:to|at|with) (.+)$/i, company: 1 },
+]
+
+const cleanName = (s: string) =>
+  s
+    .replace(/\s+[—–-]\s+.*$/, '') // "Acme — here's what's next"
+    .replace(/[!.:,\s]+$/, '')
+    .replace(/^the\s+/i, '')
+    .trim()
+
+export function confirmationFromSubject(subject: string): { company: string; role: string } | null {
+  const text = subject
+    .replace(/\s+/g, ' ')
+    .replace(/^(?:re|fwd?):\s*/i, '')
+    .trim()
+  for (const { re, role, company } of CONFIRMATION_SUBJECTS) {
+    const m = text.match(re)
+    if (!m) continue
+    const name = cleanName(m[company]).slice(0, 200)
+    // Too short or sentence-like to be a company name: leave it to the model.
+    if (name.length < 2 || name.split(' ').length > 6 || /\b(?:our|your|the team|position|role)\b/i.test(name))
+      return null
+    return { company: name, role: role ? cleanName(m[role]).slice(0, 200) : '' }
+  }
+  return null
+}
+
 /** Subject or preview reads like an application confirmation (cheap check before the model reads it). */
 export function looksLikeConfirmation(email: EmailSummary): boolean {
   const text = words(`${email.subject} ${email.snippet}`).join(' ')
