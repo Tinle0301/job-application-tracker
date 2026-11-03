@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   companyScore,
+  confirmationFromSubject,
   confirmationQuery,
   decideNewApplication,
   decideUpdate,
@@ -400,5 +401,33 @@ describe('jobLinkFromEmail', () => {
     expect(
       jobLinkFromEmail(html('<a href="https://acme.com/jobs">All jobs</a> <a href="https://acme.com">Home</a>')),
     ).toBe('')
+  })
+})
+
+describe('confirmationFromSubject', () => {
+  it('reads the company (and role, when named) from common confirmation subjects', () => {
+    expect(confirmationFromSubject('Thank you for applying to Parallel Systems')).toEqual({
+      company: 'Parallel Systems',
+      role: '',
+    })
+    expect(confirmationFromSubject('Thanks for Applying to Adobe')).toEqual({ company: 'Adobe', role: '' })
+    expect(confirmationFromSubject("Application sent to SprintRay Inc. — here's what's next")).toEqual({
+      company: 'SprintRay Inc',
+      role: '',
+    })
+    expect(confirmationFromSubject('Your application for Software Engineer at Northwind!')).toEqual({
+      company: 'Northwind',
+      role: 'Software Engineer',
+    })
+    expect(confirmationFromSubject('Thank you for your application to Contoso')).toEqual({
+      company: 'Contoso',
+      role: '',
+    })
+  })
+
+  it('leaves other subjects to the model', () => {
+    expect(confirmationFromSubject('Appreciate your interest in Salient Motion!')).toBeNull()
+    expect(confirmationFromSubject('Next steps for your interview')).toBeNull()
+    expect(confirmationFromSubject('Thank you for applying to the role, we will review your profile soon')).toBeNull()
   })
 })

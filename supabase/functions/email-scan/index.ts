@@ -11,6 +11,7 @@ import { decryptToken } from '../_shared/crypto.ts'
 import {
   FIRST_SCAN_DAYS,
   SCAN_OVERLAP_SECONDS,
+  confirmationFromSubject,
   confirmationQuery,
   decideNewApplication,
   decideUpdate,
@@ -45,6 +46,7 @@ import {
   emailUserMessage,
   validateConfirmations,
   validateEmailStages,
+  type ConfirmationOut,
 } from '../_shared/prompts.ts'
 import { adminClient, currentUser, DAILY_AI_LIMIT, userClient } from '../_shared/supabase.ts'
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
@@ -53,6 +55,8 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 const MAX_MESSAGES = 100
 const MAX_CLASSIFIED = 30
 const BATCH = 10
+/** How sure a confirmation read from its subject line alone is (enough to add it). */
+const SUBJECT_CONFIDENCE = 0.8
 /**
  * Supabase stops a function after 150 s (free plan) and answers with a bare
  * error page. The scan stops starting new work well before that, and the
@@ -75,7 +79,12 @@ interface ScanResult {
   toAdd: number
   /** False when a limit cut the scan short; the next scan picks up the rest. */
   complete: boolean
+  /** What cut it short, when something did. */
+  waiting?: ScanWait
 }
+
+/** daily_limit: the app's daily AI quota; ai_busy: Google rate limited or overloaded; ai_slow / time: ran out of time. */
+type ScanWait = 'daily_limit' | 'ai_busy' | 'ai_slow' | 'time'
 
 class ScanError extends Error {
   status: number
@@ -129,15 +138,26 @@ async function aiQuotaLeft(db: SupabaseClient, userId: string): Promise<boolean>
 /** Milliseconds left before the scan has to wrap up. */
 type Clock = () => number
 
-/** One model call; null when the model is rate limited or slow (the scan stops and resumes next time). */
+/**
+ * One model call; null when the daily quota is used up or the model is rate
+ * limited or slow (result.waiting says which; the scan resumes next time).
+ */
 async function ask(
   db: SupabaseClient,
   userId: string,
   cfg: Settings,
   timeLeft: Clock,
+  result: ScanResult,
   prompt: { system: string; user: string; tool: typeof EMAIL_TOOL | typeof CONFIRM_TOOL },
 ): Promise<{ input: unknown } | null> {
-  if (timeLeft() < AI_CALL_MS) return null
+  if (timeLeft() < AI_CALL_MS) {
+    result.waiting = 'time'
+    return null
+  }
+  if (!(await aiQuotaLeft(db, userId))) {
+    result.waiting = 'daily_limit'
+    return null
+  }
   try {
     const { input } = await callLlmTool({
       apiKey: cfg.apiKey,
@@ -152,7 +172,11 @@ async function ask(
     return { input }
   } catch (e) {
     // Out of quota or still busy after retries: keep what was found and finish on the next check.
-    if (e instanceof LlmError && (e.status === 429 || e.status >= 500)) return null
+    if (e instanceof LlmError && (e.status === 429 || e.status >= 500)) {
+      console.warn('email-scan AI call waits:', e.message)
+      result.waiting = e.status === 504 ? 'ai_slow' : 'ai_busy'
+      return null
+    }
     throw e
   }
 }
@@ -258,16 +282,126 @@ async function addFromConfirmations(
   const candidates = heads
     .filter((h) => h.fromAddress !== ctx.account && looksLikeConfirmation(h))
     .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt)) // oldest first, so a repeat confirmation is a duplicate
-  const complete = candidates.length <= MAX_CLASSIFIED
-  const toRead = candidates.slice(0, MAX_CLASSIFIED)
+
+  /** Saves one classified email, and adds, links or queues its application. */
+  const handle = async (c: ConfirmationOut, email: EmailSummary) => {
+    const decision = decideNewApplication({ ...c, receivedAt: email.receivedAt }, apps)
+    // Not a confirmation: keep only the id, and let the status pass read it.
+    const row =
+      decision.action === 'ignore'
+        ? { message_id: email.id, received_at: email.receivedAt, state: 'ignored' }
+        : {
+            message_id: email.id,
+            from_address: email.fromAddress.slice(0, 320),
+            subject: email.subject.slice(0, 500),
+            received_at: email.receivedAt,
+            applied_on: localDate(email.receivedAt, ctx.timeZone),
+            link: gmailLink(email.id, ctx.account),
+            company: c.company,
+            role: c.role,
+            location: c.location,
+            confidence: c.confidence,
+            reason: c.reason,
+            state: decision.action === 'duplicate' ? 'duplicate' : 'suggested',
+            application_id: decision.action === 'duplicate' ? decision.application.id : null,
+          }
+    const { data: saved, error } = await db
+      .from('email_new_applications')
+      .upsert({ user_id: userId, ...row }, { onConflict: 'user_id,message_id', ignoreDuplicates: true })
+      .select('id')
+      .maybeSingle()
+    if (error || !saved) return
+
+    if (decision.action === 'duplicate') {
+      await recordEmails(db, userId, ctx.account, [{ email, applicationId: decision.application.id }])
+      // Already tracked: a wishlist entry moves to applied; anything else stays as it is.
+      const app = decision.application
+      if (app.status !== 'wishlist') return
+      const action = decideUpdate(app.status, 'applied', c.confidence, false)
+      const { data: upd } = await db
+        .from('email_status_updates')
+        .upsert(
+          {
+            user_id: userId,
+            application_id: app.id,
+            message_id: email.id,
+            from_address: email.fromAddress.slice(0, 320),
+            subject: email.subject.slice(0, 500),
+            received_at: email.receivedAt,
+            detected_status: 'applied',
+            previous_status: 'wishlist',
+            confidence: c.confidence,
+            reason: c.reason,
+            state: 'suggested',
+          },
+          { onConflict: 'user_id,message_id', ignoreDuplicates: true },
+        )
+        .select('id')
+        .maybeSingle()
+      if (!upd) return
+      if (action === 'apply' && !(await db.rpc('apply_email_update', { p_id: upd.id })).error) {
+        app.status = 'applied'
+        // A wishlist entry has no applied date yet: use the confirmation's.
+        await db
+          .from('applications')
+          .update({ applied_on: localDate(email.receivedAt, ctx.timeZone) })
+          .eq('id', app.id)
+          .is('applied_on', null)
+        result.applied++
+      } else result.suggested++
+      return
+    }
+
+    if (decision.action === 'create') {
+      const role = c.role.trim() || ROLE_NOT_LISTED
+      const { data: appId, error: addError } = await db.rpc('add_email_application', { p_id: saved.id, p_role: role })
+      if (!addError && appId) {
+        await recordEmails(db, userId, ctx.account, [{ email, applicationId: appId as string }])
+        // Later emails in this scan see it, so a second confirmation is a duplicate.
+        apps.push({
+          id: appId as string,
+          company: c.company,
+          role,
+          status: 'applied',
+          updatedAt: new Date().toISOString(),
+        })
+        result.added++
+        return
+      }
+    }
+    if (decision.action !== 'ignore') result.toAdd++
+  }
+
+  // Subjects like "Thank you for applying to Acme" name the company: no AI call needed.
+  const rest: EmailSummary[] = []
+  for (const e of candidates) {
+    const known = confirmationFromSubject(e.subject)
+    if (!known) {
+      rest.push(e)
+      continue
+    }
+    await handle(
+      {
+        id: e.id,
+        confirmation: true,
+        ...known,
+        location: '',
+        confidence: SUBJECT_CONFIDENCE,
+        reason: 'Confirmation email',
+      },
+      e,
+    )
+  }
+
+  const complete = rest.length <= MAX_CLASSIFIED
+  const toRead = rest.slice(0, MAX_CLASSIFIED)
   await mapLimit(toRead, 5, async (e) => {
     e.body = summarizeMessage(await getMessage(ctx.accessToken, e.id, 'full')).body
   })
 
   for (let i = 0; i < toRead.length; i += BATCH) {
-    if (!(await aiQuotaLeft(db, userId))) return false
     const batch = toRead.slice(i, i + BATCH)
-    const answer = await ask(db, userId, cfg, ctx.timeLeft, {
+    const answer = await ask(db, userId, cfg, ctx.timeLeft, result, {
       system: CONFIRM_SYSTEM,
       user: confirmUserMessage(
         batch.map((e) => ({
@@ -286,94 +420,11 @@ async function addFromConfirmations(
       batch.map((e) => e.id),
     )
 
-    for (const c of found) {
-      const email = batch.find((e) => e.id === c.id)!
-      const decision = decideNewApplication({ ...c, receivedAt: email.receivedAt }, apps)
-      // Not a confirmation: keep only the id, and let the status pass read it.
-      const row =
-        decision.action === 'ignore'
-          ? { message_id: email.id, received_at: email.receivedAt, state: 'ignored' }
-          : {
-              message_id: email.id,
-              from_address: email.fromAddress.slice(0, 320),
-              subject: email.subject.slice(0, 500),
-              received_at: email.receivedAt,
-              applied_on: localDate(email.receivedAt, ctx.timeZone),
-              link: gmailLink(email.id, ctx.account),
-              company: c.company,
-              role: c.role,
-              location: c.location,
-              confidence: c.confidence,
-              reason: c.reason,
-              state: decision.action === 'duplicate' ? 'duplicate' : 'suggested',
-              application_id: decision.action === 'duplicate' ? decision.application.id : null,
-            }
-      const { data: saved, error } = await db
-        .from('email_new_applications')
-        .upsert({ user_id: userId, ...row }, { onConflict: 'user_id,message_id', ignoreDuplicates: true })
-        .select('id')
-        .maybeSingle()
-      if (error || !saved) continue
-
-      if (decision.action === 'duplicate') {
-        await recordEmails(db, userId, ctx.account, [{ email, applicationId: decision.application.id }])
-        // Already tracked: a wishlist entry moves to applied; anything else stays as it is.
-        const app = decision.application
-        if (app.status !== 'wishlist') continue
-        const action = decideUpdate(app.status, 'applied', c.confidence, false)
-        const { data: upd } = await db
-          .from('email_status_updates')
-          .upsert(
-            {
-              user_id: userId,
-              application_id: app.id,
-              message_id: email.id,
-              from_address: email.fromAddress.slice(0, 320),
-              subject: email.subject.slice(0, 500),
-              received_at: email.receivedAt,
-              detected_status: 'applied',
-              previous_status: 'wishlist',
-              confidence: c.confidence,
-              reason: c.reason,
-              state: 'suggested',
-            },
-            { onConflict: 'user_id,message_id', ignoreDuplicates: true },
-          )
-          .select('id')
-          .maybeSingle()
-        if (!upd) continue
-        if (action === 'apply' && !(await db.rpc('apply_email_update', { p_id: upd.id })).error) {
-          app.status = 'applied'
-          // A wishlist entry has no applied date yet: use the confirmation's.
-          await db
-            .from('applications')
-            .update({ applied_on: localDate(email.receivedAt, ctx.timeZone) })
-            .eq('id', app.id)
-            .is('applied_on', null)
-          result.applied++
-        } else result.suggested++
-        continue
-      }
-
-      if (decision.action === 'create') {
-        const role = c.role.trim() || ROLE_NOT_LISTED
-        const { data: appId, error: addError } = await db.rpc('add_email_application', { p_id: saved.id, p_role: role })
-        if (!addError && appId) {
-          await recordEmails(db, userId, ctx.account, [{ email, applicationId: appId as string }])
-          // Later emails in this scan see it, so a second confirmation is a duplicate.
-          apps.push({
-            id: appId as string,
-            company: c.company,
-            role,
-            status: 'applied',
-            updatedAt: new Date().toISOString(),
-          })
-          result.added++
-          continue
-        }
-      }
-      if (decision.action !== 'ignore') result.toAdd++
-    }
+    for (const c of found)
+      await handle(
+        c,
+        batch.find((e) => e.id === c.id)!,
+      )
   }
   return complete
 }
@@ -582,13 +633,8 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
 
   const statusOf = new Map<string, TrackedApplication['status']>(apps.map((a) => [a.id, a.status]))
   for (let i = 0; i < toRead.length; i += BATCH) {
-    if (!(await aiQuotaLeft(db, userId))) {
-      result.complete = false
-      break
-    }
-
     const batch = toRead.slice(i, i + BATCH)
-    const answer = await ask(db, userId, cfg, timeLeft, {
+    const answer = await ask(db, userId, cfg, timeLeft, result, {
       system: EMAIL_SYSTEM,
       user: emailUserMessage(
         batch.map(({ email, match }) => ({

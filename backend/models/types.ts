@@ -140,6 +140,8 @@ export interface EmailScanResult {
   toAdd: number
   /** False when a limit cut the scan short; scanning again continues. */
   complete: boolean
+  /** What cut it short: the app's daily AI quota, Google's rate limit, or time. */
+  waiting?: 'daily_limit' | 'ai_busy' | 'ai_slow' | 'time'
 }
 
 export interface ServiceError {

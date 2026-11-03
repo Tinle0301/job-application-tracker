@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Application, EmailApplication, EmailConnection, EmailUpdate } from '@backend/models/types'
+import type {
+  Application,
+  EmailApplication,
+  EmailConnection,
+  EmailScanResult,
+  EmailUpdate,
+} from '@backend/models/types'
 import type { TrackerApi } from '@backend/services/api'
 import { StatusBadge } from './StatusBadge'
 
@@ -44,6 +50,13 @@ const button =
   'rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-100 disabled:opacity-50'
 
 const small = 'w-40 rounded-md border border-stone-300 px-2 py-1 text-sm focus:border-stone-500 focus:outline-none'
+
+const LEFT_FOR_LATER: Record<NonNullable<EmailScanResult['waiting']>, string> = {
+  daily_limit: "Today's AI limit is used up, so some emails wait until tomorrow.",
+  ai_busy: "Google's free AI limit was reached, so some emails wait. Try again in a minute.",
+  ai_slow: 'The AI was slow to answer, so some emails are left for the next check.',
+  time: 'Some emails are left for the next check.',
+}
 
 /** A job found in a confirmation email: Undo once added, or Add (with editable company and role) / Dismiss. */
 function NewApplicationRow({
@@ -170,7 +183,7 @@ export function EmailSync({ api, apps, onStatusesChanged }: Props) {
       if (res.error.code === 'EMAIL_RECONNECT') setConnection((c) => (c ? { ...c, status: 'needs_reconnect' } : c))
       return
     }
-    const { applied, suggested, added = 0, toAdd = 0, complete } = res.data
+    const { applied, suggested, added = 0, toAdd = 0, complete, waiting } = res.data
     const parts = [
       added ? `${added} application${added === 1 ? '' : 's'} added` : '',
       applied ? `${applied} status${applied === 1 ? '' : 'es'} updated` : '',
@@ -180,7 +193,7 @@ export function EmailSync({ api, apps, onStatusesChanged }: Props) {
       kind: 'ok',
       text:
         (parts.length ? `${parts.join(', ')}.` : 'Nothing new in your inbox.') +
-        (complete ? '' : ' Some emails are left for the next check.'),
+        (complete ? '' : ` ${LEFT_FOR_LATER[waiting ?? 'time']}`),
     })
     setConnection((c) => (c ? { ...c, lastScanAt: new Date().toISOString() } : c))
     await loadUpdates()
