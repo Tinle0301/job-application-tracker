@@ -299,7 +299,9 @@ describe('adding applications from confirmation emails', () => {
 
   it('asks when unsure', () => {
     expect(decideNewApplication(conf({ confidence: 0.5 }), [])).toEqual({ action: 'suggest' })
-    expect(decideNewApplication(conf({ role: '' }), [])).toEqual({ action: 'suggest' })
+    // No role named: still added (as "Role not listed") when nothing at that company is tracked.
+    expect(decideNewApplication(conf({ role: '' }), [])).toEqual({ action: 'create' })
+    expect(decideNewApplication(conf({ role: '', confidence: 0.5 }), [])).toEqual({ action: 'suggest' })
     const tracked = app({})
     expect(decideNewApplication(conf({ company: 'Northwind', role: '' }), [tracked])).toEqual({
       action: 'suggest',
