@@ -20,6 +20,7 @@ import {
   localDate,
   looksLikeConfirmation,
   matchApplication,
+  ROLE_NOT_LISTED,
   summarizeMessage,
   type EmailSummary,
   type TrackedApplication,
@@ -182,6 +183,53 @@ async function recordEmails(
 }
 
 /**
+ * Adds the confirmations that earlier scans left for review only because the
+ * email named no role (no AI call): they now go in under ROLE_NOT_LISTED.
+ */
+async function addWaitingWithoutRole(
+  db: SupabaseClient,
+  userId: string,
+  apps: TrackedApplication[],
+  result: ScanResult,
+): Promise<void> {
+  const { data: rows } = await db
+    .from('email_new_applications')
+    .select('id, message_id, from_address, subject, received_at, link, company, role, confidence')
+    .eq('user_id', userId)
+    .eq('state', 'suggested')
+    .eq('role', '')
+    .order('received_at', { ascending: true })
+    .limit(20)
+  for (const r of rows ?? []) {
+    const c = { confirmation: true, company: r.company, role: '', confidence: r.confidence, receivedAt: r.received_at }
+    if (decideNewApplication(c, apps).action !== 'create') continue
+    const { data: appId, error } = await db.rpc('add_email_application', { p_id: r.id, p_role: ROLE_NOT_LISTED })
+    if (error || !appId) continue
+    await db.from('application_emails').upsert(
+      {
+        user_id: userId,
+        application_id: appId,
+        message_id: r.message_id,
+        from_name: '',
+        from_address: r.from_address,
+        subject: r.subject,
+        received_at: r.received_at,
+        link: r.link,
+      },
+      { onConflict: 'user_id,message_id', ignoreDuplicates: true },
+    )
+    apps.push({
+      id: appId as string,
+      company: r.company,
+      role: ROLE_NOT_LISTED,
+      status: 'applied',
+      updatedAt: new Date().toISOString(),
+    })
+    result.added++
+  }
+}
+
+/**
  * Adds applications from "thanks for applying" emails about jobs that aren't
  * tracked yet. Returns false when a limit cut it short.
  */
@@ -308,14 +356,15 @@ async function addFromConfirmations(
       }
 
       if (decision.action === 'create') {
-        const { data: appId, error: addError } = await db.rpc('add_email_application', { p_id: saved.id })
+        const role = c.role.trim() || ROLE_NOT_LISTED
+        const { data: appId, error: addError } = await db.rpc('add_email_application', { p_id: saved.id, p_role: role })
         if (!addError && appId) {
           await recordEmails(db, userId, ctx.account, [{ email, applicationId: appId as string }])
           // Later emails in this scan see it, so a second confirmation is a duplicate.
           apps.push({
             id: appId as string,
             company: c.company,
-            role: c.role,
+            role,
             status: 'applied',
             updatedAt: new Date().toISOString(),
           })
@@ -460,6 +509,7 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
   }))
 
   const own = conn.email.toLowerCase()
+  await addWaitingWithoutRole(db, userId, apps, result)
   confirmationsComplete = await addFromConfirmations(
     db,
     userId,

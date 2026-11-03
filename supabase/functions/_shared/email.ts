@@ -373,6 +373,8 @@ const RANK: Partial<Record<Stage, number>> = { wishlist: 0, applied: 1, assessme
 
 /** Below this the model's answer is only offered as a suggestion. */
 export const AUTO_APPLY_CONFIDENCE = 0.75
+/** Role for jobs added from a confirmation email that doesn't name one. */
+export const ROLE_NOT_LISTED = 'Role not listed'
 
 /**
  * What to do with a detected stage:
@@ -575,6 +577,8 @@ export function decideNewApplication(c: Confirmation, apps: TrackedApplication[]
     if (ranked[0].sim >= MAYBE_SAME_ROLE) return { action: 'suggest', possibleDuplicate: best }
   }
 
-  if (!c.role.trim() || c.confidence < AUTO_APPLY_CONFIDENCE) return { action: 'suggest' }
+  // Many confirmations ("Thanks for applying to Acme") don't name the role: add the job
+  // anyway, under ROLE_NOT_LISTED, so it is counted; the user can fill the role in with Edit.
+  if (c.confidence < AUTO_APPLY_CONFIDENCE) return { action: 'suggest' }
   return { action: 'create' }
 }
