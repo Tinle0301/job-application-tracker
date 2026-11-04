@@ -358,7 +358,16 @@ describe('adding applications from confirmation emails', () => {
         results: [
           { id: 'm1', confirmation: true, company: ' Fabrikam ', role: 'Data Analyst', location: '', confidence: 92 },
           { id: 'm1', confirmation: false, company: '', role: '', location: '', confidence: 1 },
-          { id: 'm2', confirmation: 'yes', company: 'X', role: 'Y', location: '', confidence: 0.4, reason: 'r' },
+          {
+            id: 'm2',
+            confirmation: true,
+            stage: 'Rejected',
+            company: 'X',
+            role: 'Y',
+            location: '',
+            confidence: 0.4,
+            reason: 'r',
+          },
           { id: 'other', confirmation: true, company: 'Z', role: 'Z', location: '', confidence: 1 },
           null,
         ],
@@ -369,14 +378,29 @@ describe('adding applications from confirmation emails', () => {
       {
         id: 'm1',
         confirmation: true,
+        stage: 'applied',
         company: 'Fabrikam',
         role: 'Data Analyst',
         location: '',
         confidence: 0.92,
         reason: '',
       },
-      { id: 'm2', confirmation: false, company: 'X', role: 'Y', location: '', confidence: 0.4, reason: 'r' },
+      // An update on an application it wasn't tracking: a rejection.
+      {
+        id: 'm2',
+        confirmation: true,
+        stage: 'rejected',
+        company: 'X',
+        role: 'Y',
+        location: '',
+        confidence: 0.4,
+        reason: 'r',
+      },
     ])
+    // Anything but true is not a confirmation; an unknown stage means applied.
+    expect(
+      validateConfirmations({ results: [{ id: 'm3', confirmation: 'yes', stage: 'hired', company: 'X' }] }, ['m3']),
+    ).toMatchObject([{ confirmation: false, stage: 'applied' }])
     expect(validateConfirmations(null, ['m1'])).toEqual([])
   })
 
