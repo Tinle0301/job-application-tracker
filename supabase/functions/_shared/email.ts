@@ -293,6 +293,27 @@ function senderLabels(address: string): string[] {
     .map((l) => l.replace(/-/g, ''))
 }
 
+/** Endings companies add to their name in a domain label. */
+const DOMAIN_SUFFIXES = [
+  'co',
+  'inc',
+  'io',
+  'ai',
+  'hq',
+  'app',
+  'corp',
+  'group',
+  'global',
+  'tech',
+  'labs',
+  'team',
+  'jobs',
+  'careers',
+  'hr',
+  'usa',
+  'us',
+]
+
 /** How strongly an email points at a company (0 = not at all). */
 export function companyScore(email: EmailSummary, company: string): number {
   const phrase = companyWords(company)
@@ -303,7 +324,13 @@ export function companyScore(email: EmailSummary, company: string): number {
 
   let score = 0
   const labels = senderLabels(email.fromAddress)
-  if (labels.some((l) => l === compact || (head && l === head[0]))) score = Math.max(score, 3)
+  const names = [compact, head?.[0]].filter((w): w is string => !!w)
+  // The name itself, or the name plus a common suffix ("wtwco.com" for WTW, "xataio" for Xata).
+  if (labels.some((l) => names.some((w) => l === w || DOMAIN_SUFFIXES.some((x) => l === w + x))))
+    score = Math.max(score, 3)
+  // A domain that starts with the name ("telusinternational.ai" for "TELUS Digital") counts for
+  // less; names under 5 letters are too likely to start unrelated words.
+  else if (labels.some((l) => names.some((w) => w.length >= 5 && l.startsWith(w)))) score = Math.max(score, 2)
 
   const fields: [string, number][] = [
     [email.fromName, 3],
@@ -349,11 +376,17 @@ const ACTIVE: Stage[] = ['wishlist', 'applied', 'assessment', 'interviewing']
  * The application an email is about, or null. Emails that name several
  * different companies (job alerts, digests) are skipped.
  */
-export function matchApplication(email: EmailSummary, apps: TrackedApplication[]): EmailMatch | null {
-  const scored = apps.map((app) => ({ app, score: companyScore(email, app.company) })).filter((s) => s.score >= 2)
+export function matchApplication(
+  email: EmailSummary,
+  apps: TrackedApplication[],
+  { minScore = 2, maxCompanies = 2 } = {},
+): EmailMatch | null {
+  const scored = apps
+    .map((app) => ({ app, score: companyScore(email, app.company) }))
+    .filter((s) => s.score >= minScore)
   if (!scored.length) return null
   const companies = new Set(scored.map((s) => companyWords(s.app.company).join(' ')))
-  if (companies.size > 2) return null
+  if (companies.size > maxCompanies) return null
 
   const ranked = scored
     .map((s) => ({ ...s, total: s.score + (roleOverlap(email, s.app.role) >= 0.6 ? 2 : 0) }))
@@ -365,6 +398,21 @@ export function matchApplication(email: EmailSummary, apps: TrackedApplication[]
     )
   const [best, next] = ranked
   return { application: best.app, ambiguous: Boolean(next && next.total === best.total) }
+}
+
+/** Subjects about the user's own application, not a job alert or newsletter. */
+export const ABOUT_AN_APPLICATION =
+  /\b(?:your application|application (?:for|to|update|status|received)|applying|applied|candidacy|interview|assessment|next steps|offer)\b/i
+
+/**
+ * For an email whose sender, subject and preview name no tracked company
+ * ("Update on your application" from a recruiting platform): matches it by
+ * its body, when the subject is about an application and the body names
+ * exactly one tracked company. Needs email.body.
+ */
+export function matchApplicationByBody(email: EmailSummary, apps: TrackedApplication[]): EmailMatch | null {
+  if (!email.body || !ABOUT_AN_APPLICATION.test(email.subject)) return null
+  return matchApplication(email, apps, { minScore: 1, maxCompanies: 1 })
 }
 
 // ---------------------------------------------------------------- decision

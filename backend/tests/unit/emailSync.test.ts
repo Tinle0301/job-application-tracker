@@ -15,6 +15,7 @@ import {
   gmailQuery,
   jobLinkFromEmail,
   matchApplication,
+  matchApplicationByBody,
   messageBody,
   parseFrom,
   summarizeMessage,
@@ -113,6 +114,10 @@ describe('matching an email to an application', () => {
 
   it('matches ATS mail by display name or subject, not by the ATS domain', () => {
     expect(companyScore(email({ fromAddress: 'no-reply@greenhouse.io' }), 'Greenhouse')).toBe(0)
+    // The domain starts with the company's name.
+    expect(companyScore(email({ fromAddress: 'no-reply@telusinternational.ai' }), 'TELUS Digital')).toBe(2)
+    expect(companyScore(email({ fromAddress: 'no-reply@telusinternational.ai' }), 'TELUS')).toBe(2)
+    expect(companyScore(email({ fromAddress: 'jobs@metabase.com' }), 'Meta')).toBe(0)
     expect(companyScore(email({ fromName: 'Contoso Hiring Team', fromAddress: 'x@lever.co' }), 'Contoso')).toBe(3)
     expect(companyScore(email({ subject: 'Thank you for applying to Contoso!' }), 'Contoso')).toBe(2)
     expect(companyScore(email({ snippet: 'the team at Contoso' }), 'Contoso')).toBe(1)
@@ -149,6 +154,24 @@ describe('matching an email to an application', () => {
     ]
     expect(matchApplication(email({ subject: 'Jobs at Contoso, Fabrikam and Tailspin' }), apps)).toBeNull()
     expect(matchApplication(email({ subject: 'Your weekly newsletter' }), apps)).toBeNull()
+  })
+
+  it('reads company names with a suffix in the sender domain', () => {
+    expect(companyScore(email({ fromAddress: 'recruitment@wtwco.com' }), 'WTW')).toBe(3)
+    expect(companyScore(email({ fromAddress: 'x@xataio.teamtailor-mail.com' }), 'Xata')).toBe(3)
+  })
+
+  it('finds the company in the body when nothing else names it', () => {
+    const apps = [app({ id: 'telus', company: 'TELUS Digital' }), app({ id: 'other', company: 'Contoso' })]
+    const update = email({
+      fromAddress: 'no-reply@sourcing-platform.example',
+      subject: 'Update on your application for AI Quality Expert',
+      body: 'Unfortunately we cannot proceed. Kind Regards, TELUS Digital Sourcing Team',
+    })
+    expect(matchApplicationByBody(update, apps)).toEqual({ application: apps[0], ambiguous: false })
+    // Job alerts and digests that name tracked companies are left alone.
+    expect(matchApplicationByBody({ ...update, subject: '35 jobs you may be interested in' }, apps)).toBeNull()
+    expect(matchApplicationByBody({ ...update, body: 'Roles at TELUS Digital and Contoso' }, apps)).toBeNull()
   })
 })
 
