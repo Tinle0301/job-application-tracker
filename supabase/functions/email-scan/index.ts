@@ -21,6 +21,8 @@ import {
   localDate,
   looksLikeConfirmation,
   matchApplication,
+  matchApplicationByBody,
+  ABOUT_AN_APPLICATION,
   ROLE_NOT_LISTED,
   summarizeMessage,
   type EmailSummary,
@@ -55,6 +57,8 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 const MAX_MESSAGES = 100
 const MAX_CLASSIFIED = 30
 const BATCH = 10
+/** Unmatched emails read in full per scan to find the company in the body. */
+const MAX_BODY_MATCH = 15
 /** How sure a confirmation read from its subject line alone is (enough to add it). */
 const SUBJECT_CONFIDENCE = 0.8
 /**
@@ -606,10 +610,23 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
     5,
     async (id) => summarizeMessage(await getMessage(accessToken, id, 'metadata'), false),
   )
-  const allMatched = heads
-    .filter((h) => h.fromAddress !== own)
-    .map((email) => ({ email, match: matchApplication(email, apps) }))
-    .filter((m): m is { email: EmailSummary; match: NonNullable<typeof m.match> } => m.match !== null)
+  const fromOthers = heads.filter((h) => h.fromAddress !== own)
+  const byHeaders = fromOthers.map((email) => ({ email, match: matchApplication(email, apps) }))
+  // Nothing in the sender, subject or preview names a tracked company: read the newest
+  // of those emails in full and look for one in the body (TELUS writes from
+  // telusinternational.ai and names "TELUS Digital" only in its signature).
+  const unmatched = byHeaders
+    .filter((m) => !m.match && ABOUT_AN_APPLICATION.test(m.email.subject))
+    .sort((a, b) => b.email.receivedAt.localeCompare(a.email.receivedAt))
+    .slice(0, MAX_BODY_MATCH)
+  if (timeLeft() > AI_CALL_MS)
+    await mapLimit(unmatched, 5, async (m) => {
+      m.email.body = summarizeMessage(await getMessage(accessToken, m.email.id, 'full')).body
+      m.match = matchApplicationByBody(m.email, apps)
+    })
+  const allMatched = byHeaders.filter(
+    (m): m is { email: EmailSummary; match: NonNullable<typeof m.match> } => m.match !== null,
+  )
   await recordEmails(
     db,
     userId,

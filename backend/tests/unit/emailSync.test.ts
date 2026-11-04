@@ -15,6 +15,7 @@ import {
   gmailQuery,
   jobLinkFromEmail,
   matchApplication,
+  matchApplicationByBody,
   messageBody,
   parseFrom,
   summarizeMessage,
@@ -153,6 +154,24 @@ describe('matching an email to an application', () => {
     ]
     expect(matchApplication(email({ subject: 'Jobs at Contoso, Fabrikam and Tailspin' }), apps)).toBeNull()
     expect(matchApplication(email({ subject: 'Your weekly newsletter' }), apps)).toBeNull()
+  })
+
+  it('reads company names with a suffix in the sender domain', () => {
+    expect(companyScore(email({ fromAddress: 'recruitment@wtwco.com' }), 'WTW')).toBe(3)
+    expect(companyScore(email({ fromAddress: 'x@xataio.teamtailor-mail.com' }), 'Xata')).toBe(3)
+  })
+
+  it('finds the company in the body when nothing else names it', () => {
+    const apps = [app({ id: 'telus', company: 'TELUS Digital' }), app({ id: 'other', company: 'Contoso' })]
+    const update = email({
+      fromAddress: 'no-reply@sourcing-platform.example',
+      subject: 'Update on your application for AI Quality Expert',
+      body: 'Unfortunately we cannot proceed. Kind Regards, TELUS Digital Sourcing Team',
+    })
+    expect(matchApplicationByBody(update, apps)).toEqual({ application: apps[0], ambiguous: false })
+    // Job alerts and digests that name tracked companies are left alone.
+    expect(matchApplicationByBody({ ...update, subject: '35 jobs you may be interested in' }, apps)).toBeNull()
+    expect(matchApplicationByBody({ ...update, body: 'Roles at TELUS Digital and Contoso' }, apps)).toBeNull()
   })
 })
 
