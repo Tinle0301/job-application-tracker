@@ -59,6 +59,10 @@ const MAX_CLASSIFIED = 30
 const BATCH = 10
 /** Unmatched emails read in full per scan to find the company in the body. */
 const MAX_BODY_MATCH = 15
+/** Every check lists this many days back, so emails missed earlier still get matched. */
+const RECHECK_DAYS = 14
+/** Newly matched emails this recent are read for a status change even if an earlier check passed them. */
+const RECENT_NEW_MATCH_DAYS = 7
 /** How sure a confirmation read from its subject line alone is (enough to add it). */
 const SUBJECT_CONFIDENCE = 0.8
 /**
@@ -579,10 +583,13 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
   // Every matched email is listed under its application. While the look-back
   // cursor is unset (first scan, or an application was added since), that
   // goes back further than the status check, so earlier emails show up too.
+  // It always reaches back RECHECK_DAYS, so an email that matched nothing before
+  // (better matching since, or its application added later) is picked up.
   const statusSince = sinceFor(conn.last_scan_at)
+  const recheckSince = startedAt.getTime() / 1000 - RECHECK_DAYS * 86400
   const ids = await listMessageIds(
     accessToken,
-    gmailQuery(Math.min(statusSince, sinceFor(conn.emails_scanned_at))),
+    gmailQuery(Math.min(statusSince, sinceFor(conn.emails_scanned_at), recheckSince)),
     MAX_MESSAGES,
   )
   result.scanned = ids.length
@@ -638,8 +645,15 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
 
   // Only new emails since the last status check are read for a status change.
   const statusFrom = new Date(statusSince * 1000).toISOString()
+  // Emails matched for the first time in the last few days are read too (one
+  // that matched nothing on an earlier check, like a rejection, still counts).
+  const newlyFrom = new Date(startedAt.getTime() - RECENT_NEW_MATCH_DAYS * 86400_000).toISOString()
   const matched = allMatched
-    .filter((m) => !seen.has(m.email.id) && m.email.receivedAt >= statusFrom)
+    .filter(
+      (m) =>
+        !seen.has(m.email.id) &&
+        (m.email.receivedAt >= statusFrom || (!listed.has(m.email.id) && m.email.receivedAt >= newlyFrom)),
+    )
     .sort((a, b) => a.email.receivedAt.localeCompare(b.email.receivedAt)) // oldest first, so the latest email wins
   result.matched = matched.length
   if (matched.length > MAX_CLASSIFIED) result.complete = false
