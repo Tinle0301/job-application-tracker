@@ -7,7 +7,7 @@ Connect the Gmail account you apply from, and the tracker fills itself in:
 - **Email dates.** Timeline steps an email caused (Applied from a confirmation, Assessment, Interviewing, …) are dated when the email arrived, not when the inbox was checked. While a job stays at a stage past Applied that an email set, that step shows the date of the newest email about the job (e.g. the latest assessment reminder).
 - **Email history.** Open an application's row to see every email received about that job, newest first, with its date, subject and sender. The subject opens the email in Gmail.
 
-Anything the tracker adds or changes can be undone.
+Anything the tracker adds or changes can be opened (to read the email) and fixed with **Edit**.
 
 Off until enabled: the panel only appears when the build has `VITE_ENABLE_EMAIL_SYNC=true`.
 
@@ -36,6 +36,7 @@ Off until enabled: the panel only appears when the build has `VITE_ENABLE_EMAIL_
    - **Suggested:** anything less certain, an email that fits two applications at the same company equally well, news about an application already marked Rejected or Withdrawn, or a rejection after an offer. The user taps **Apply** or **Dismiss**.
    - **Ignored:** no change, or a step backwards (a late "we received your application" after an interview invite).
 4. **Undo.** For an added application, `undo_email_application()` deletes it, as long as it is still at Applied (once it has moved on, delete it by hand). For a status change, `undo_email_update()` puts the previous status back and deletes the email's row from the timeline, so a wrong guess doesn't count in the pipeline stats. If the status was changed by hand after the email, undo is refused and the user sets it by hand.
+5. **Edit** (0013, replaces Undo in the app). Edit opens the email: the app asks `email-connect` (`{ action: 'read', messageId }`) to read it from Gmail right then, only for emails the tracker already tied to the user's jobs, and nothing is stored. For a status change, `correct_email_update()` sets the stage the email shows and changes the email's timeline step in place, so no new step is added; the job's current status follows only while that step is still its latest. Choosing _Not a stage change_ (or the stage the job was at before) removes the step. For an added application, `correct_email_application()` fixes its company and role.
 
 Each Gemini call counts toward the daily AI limit (`AI_DAILY_LIMIT`, shared with auto-fill and resume match). When a check hits a limit it stops early, keeps the last check time where it was, and the next check continues.
 
@@ -122,12 +123,12 @@ The secret is stored in the cron job; anyone with SQL access to the project can 
 
 ## Troubleshooting
 
-| What you see                               | Why / fix                                                                                                         |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| Google says `redirect_uri_mismatch`        | The redirect URI in step 1.6 must match `https://<project-ref>.supabase.co/functions/v1/email-connect` exactly.   |
-| Google says the app is blocked / no access | Your Gmail isn't in **Audience → Test users**.                                                                    |
-| _Email sync is not configured_             | A secret from step 2.2 (or `GEMINI_API_KEY`) is missing; set it and redeploy both functions.                      |
-| _Google access expired_                    | Normal in Testing mode every 7 days, or access was removed in your Google account. Click **Reconnect Gmail**.     |
-| A status moved wrongly                     | Click **Undo** next to it in the email panel.                                                                     |
-| A job was added that you didn't apply to   | Click **Undo** next to it in the email panel (under _New applications from email_).                               |
-| A confirmation wasn't picked up            | Only emails from the last 30 days (first check) are read. Add it by hand, or check its subject is a confirmation. |
+| What you see                               | Why / fix                                                                                                            |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Google says `redirect_uri_mismatch`        | The redirect URI in step 1.6 must match `https://<project-ref>.supabase.co/functions/v1/email-connect` exactly.      |
+| Google says the app is blocked / no access | Your Gmail isn't in **Audience → Test users**.                                                                       |
+| _Email sync is not configured_             | A secret from step 2.2 (or `GEMINI_API_KEY`) is missing; set it and redeploy both functions.                         |
+| _Google access expired_                    | Normal in Testing mode every 7 days, or access was removed in your Google account. Click **Reconnect Gmail**.        |
+| A status moved wrongly                     | Click **Edit** next to it in the email panel, read the email, pick the right stage (or _Not a stage change_), Save.  |
+| A job was added that you didn't apply to   | Delete it from the table. To fix its company or role, click **Edit** next to it under _New applications from email_. |
+| A confirmation wasn't picked up            | Only emails from the last 30 days (first check) are read. Add it by hand, or check its subject is a confirmation.    |

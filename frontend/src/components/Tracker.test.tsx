@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { Tracker } from './Tracker'
 import { createDemoApi } from '../lib/demoApi'
 import type { TrackerApi } from '@backend/services/api'
-import type { EmailApplication, EmailUpdate, FitAnalysis, ParsedJob } from '@backend/models/types'
+import type { EmailApplication, EmailUpdate, FitAnalysis, ParsedJob, Status } from '@backend/models/types'
 
 describe('Tracker (demo mode)', () => {
   beforeEach(() => localStorage.clear())
@@ -248,6 +248,7 @@ describe('Tracker email sync (mocked supabase API)', () => {
   const update = (over: Partial<EmailUpdate>): EmailUpdate => ({
     id: 'u1',
     applicationId: '',
+    messageId: 'm1',
     fromAddress: 'talent@contoso.com',
     subject: 'Interview invitation',
     receivedAt: new Date().toISOString(),
@@ -274,7 +275,7 @@ describe('Tracker email sync (mocked supabase API)', () => {
     expect(startEmailConnect).toHaveBeenCalled()
   })
 
-  it('checks a stale inbox on open, lists the change and undoes it', async () => {
+  it('checks a stale inbox on open, lists the change, shows the email and fixes its stage', async () => {
     const { base, appId } = await withApp()
     let updates = [update({ applicationId: appId })]
     const scanEmail = vi.fn(async () => {
@@ -284,11 +285,22 @@ describe('Tracker email sync (mocked supabase API)', () => {
         error: null,
       }
     })
-    const undoEmailUpdate = vi.fn(async () => {
-      await base.updateStatus(appId, 'applied')
-      updates = [{ ...updates[0], state: 'undone' }]
+    const correctEmailUpdate = vi.fn(async (_id: string, stage: Status | null) => {
+      await base.updateStatus(appId, stage!)
+      updates = [{ ...updates[0], detectedStatus: stage! }]
       return { data: null, error: null }
     })
+    const readEmail = vi.fn(async () => ({
+      data: {
+        fromName: 'Contoso Talent',
+        fromAddress: 'talent@contoso.com',
+        subject: 'Interview invitation',
+        receivedAt: '2026-10-20T10:00:00Z',
+        body: 'Please complete the HireVue assessment by Friday.',
+        link: 'https://mail.google.com/mail/?authuser=tin%40gmail.com#all/m1',
+      },
+      error: null,
+    }))
     const api = {
       ...base,
       mode: 'supabase' as const,
@@ -299,7 +311,8 @@ describe('Tracker email sync (mocked supabase API)', () => {
       }),
       scanEmail,
       listEmailUpdates: vi.fn(async () => ({ data: updates, error: null })),
-      undoEmailUpdate,
+      correctEmailUpdate,
+      readEmail,
     }
     render(<Tracker api={api} />)
 
@@ -309,10 +322,18 @@ describe('Tracker email sync (mocked supabase API)', () => {
     const panel = screen.getByRole('region', { name: 'Email updates' })
     expect(within(panel).getByText(/Interview invitation/)).toBeInTheDocument()
 
-    fireEvent.click(within(panel).getByRole('button', { name: 'Undo Contoso update' }))
-    await waitFor(() => expect(screen.getByLabelText('Status for Contoso')).toHaveValue('applied'))
-    expect(undoEmailUpdate).toHaveBeenCalledWith('u1')
-    expect(within(panel).queryByText(/Interview invitation/)).not.toBeInTheDocument()
+    fireEvent.click(within(panel).getByRole('button', { name: 'Edit Contoso update' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Email from Contoso' })
+    expect(await within(dialog).findByText('Please complete the HireVue assessment by Friday.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Contoso Talent <talent@contoso.com>')).toBeInTheDocument()
+    expect(readEmail).toHaveBeenCalledWith('m1')
+    const save = within(dialog).getByRole('button', { name: 'Save' })
+    expect(save).toBeDisabled()
+    fireEvent.change(within(dialog).getByLabelText(/Stage this email shows/), { target: { value: 'assessment' } })
+    fireEvent.click(save)
+    await waitFor(() => expect(screen.getByLabelText('Status for Contoso')).toHaveValue('assessment'))
+    expect(correctEmailUpdate).toHaveBeenCalledWith('u1', 'assessment')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('lets the user apply or dismiss a suggestion without scanning a fresh inbox', async () => {
@@ -345,6 +366,7 @@ describe('Tracker email sync (mocked supabase API)', () => {
   const found = (over: Partial<EmailApplication>): EmailApplication => ({
     id: 'n1',
     applicationId: null,
+    messageId: 'm9',
     fromAddress: 'no-reply@greenhouse.io',
     subject: 'Thanks for applying to Fabrikam',
     receivedAt: new Date().toISOString(),
@@ -356,7 +378,7 @@ describe('Tracker email sync (mocked supabase API)', () => {
     ...over,
   })
 
-  it('adds applications found in confirmation emails and can undo one', async () => {
+  it('adds applications found in confirmation emails and can fix one', async () => {
     const base = createDemoApi(localStorage)
     let items: EmailApplication[] = []
     const scanEmail = vi.fn(async () => {
@@ -377,11 +399,17 @@ describe('Tracker email sync (mocked supabase API)', () => {
         error: null,
       }
     })
-    const undoEmailApplication = vi.fn(async () => {
-      await base.deleteApplication(items[0].applicationId!)
-      items = []
+    const correctEmailApplication = vi.fn(async (_id: string, fix: { company: string; role: string }) => {
+      const app = (await base.listApplications()).data!.find((a) => a.id === items[0].applicationId)!
+      await base.updateApplication(app.id, { ...app, ...fix, jobDescription: app.jobDescription ?? '' })
+      items = [{ ...items[0], ...fix }]
       return { data: null, error: null }
     })
+    // Gmail can't be reached: the dialog still shows what the app knows.
+    const readEmail = vi.fn(async () => ({
+      data: null,
+      error: { code: 'EMAIL_RECONNECT', message: 'Google access expired. Connect your Gmail again.' },
+    }))
     const api = {
       ...base,
       mode: 'supabase' as const,
@@ -392,7 +420,8 @@ describe('Tracker email sync (mocked supabase API)', () => {
       }),
       scanEmail,
       listEmailApplications: vi.fn(async () => ({ data: items, error: null })),
-      undoEmailApplication,
+      correctEmailApplication,
+      readEmail,
     }
     render(<Tracker api={api} />)
 
@@ -404,9 +433,19 @@ describe('Tracker email sync (mocked supabase API)', () => {
       expect.stringContaining('mail.google.com'),
     )
 
-    fireEvent.click(within(panel).getByRole('button', { name: 'Undo adding Fabrikam' }))
-    await waitFor(() => expect(screen.queryByLabelText('Status for Fabrikam')).not.toBeInTheDocument())
-    expect(undoEmailApplication).toHaveBeenCalledWith('n1')
+    fireEvent.click(within(panel).getByRole('button', { name: 'Edit Fabrikam email' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Email from Fabrikam' })
+    expect(await within(dialog).findByText(/Google access expired/)).toBeInTheDocument()
+    expect(within(dialog).getByText('Thanks for applying to Fabrikam')).toBeInTheDocument()
+    fireEvent.change(within(dialog).getByLabelText('Role'), { target: { value: 'Senior Data Analyst' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(correctEmailApplication).toHaveBeenCalledWith('n1', {
+        company: 'Fabrikam',
+        role: 'Senior Data Analyst',
+      }),
+    )
+    expect(await screen.findByText('Senior Data Analyst')).toBeInTheDocument()
   })
 
   it('lets the user fill in a missing role before adding a suggestion', async () => {

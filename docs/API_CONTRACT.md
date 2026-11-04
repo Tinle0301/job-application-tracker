@@ -86,20 +86,21 @@ Reads the application's posting link (through a browser page reader for script-o
 
 Off unless `emailSyncEnabled` (`VITE_ENABLE_EMAIL_SYNC=true`). See [EMAIL_SYNC.md](EMAIL_SYNC.md).
 
-| Method                                         | Returns                   | Backed by                                                |
-| ---------------------------------------------- | ------------------------- | -------------------------------------------------------- |
-| `getEmailConnection()`                         | `EmailConnection \| null` | `my_email_connection()`                                  |
-| `startEmailConnect()`                          | `{ url }`                 | `email-connect` `{ action: 'start' }`                    |
-| `disconnectEmail()`                            | `null`                    | `email-connect` `{ action: 'disconnect' }`               |
-| `scanEmail()`                                  | `EmailScanResult`         | `email-scan` `{ timeZone }`                              |
-| `listEmailUpdates()`                           | `EmailUpdate[]`           | `email_status_updates`, newest 50                        |
-| `applyEmailUpdate(id)`                         | `null`                    | `apply_email_update()`                                   |
-| `undoEmailUpdate(id)`                          | `null`                    | `undo_email_update()`                                    |
-| `dismissEmailUpdate(id)`                       | `null`                    | `dismiss_email_update()`                                 |
-| `listEmailApplications()`                      | `EmailApplication[]`      | `email_new_applications` (added or suggested), newest 50 |
-| `addEmailApplication(id, { company?, role? })` | `null`                    | `add_email_application()`                                |
-| `undoEmailApplication(id)`                     | `null`                    | `undo_email_application()`                               |
-| `dismissEmailApplication(id)`                  | `null`                    | `dismiss_email_application()`                            |
+| Method                                           | Returns                   | Backed by                                                |
+| ------------------------------------------------ | ------------------------- | -------------------------------------------------------- |
+| `getEmailConnection()`                           | `EmailConnection \| null` | `my_email_connection()`                                  |
+| `startEmailConnect()`                            | `{ url }`                 | `email-connect` `{ action: 'start' }`                    |
+| `disconnectEmail()`                              | `null`                    | `email-connect` `{ action: 'disconnect' }`               |
+| `scanEmail()`                                    | `EmailScanResult`         | `email-scan` `{ timeZone }`                              |
+| `listEmailUpdates()`                             | `EmailUpdate[]`           | `email_status_updates`, newest 50                        |
+| `applyEmailUpdate(id)`                           | `null`                    | `apply_email_update()`                                   |
+| `correctEmailUpdate(id, status \| null)`         | `null`                    | `correct_email_update()`                                 |
+| `dismissEmailUpdate(id)`                         | `null`                    | `dismiss_email_update()`                                 |
+| `listEmailApplications()`                        | `EmailApplication[]`      | `email_new_applications` (added or suggested), newest 50 |
+| `addEmailApplication(id, { company?, role? })`   | `null`                    | `add_email_application()`                                |
+| `correctEmailApplication(id, { company, role })` | `null`                    | `correct_email_application()`                            |
+| `readEmail(messageId)`                           | `EmailMessage`            | `email-connect` `{ action: 'read', messageId }`          |
+| `dismissEmailApplication(id)`                    | `null`                    | `dismiss_email_application()`                            |
 
 | Code                          | When                                                                     |
 | ----------------------------- | ------------------------------------------------------------------------ |
@@ -110,7 +111,10 @@ Off unless `emailSyncEnabled` (`VITE_ENABLE_EMAIL_SYNC=true`). See [EMAIL_SYNC.m
 | `EMAIL_AI_REJECTED`           | The model API rejected the key or request                                |
 | `EMAIL_SCAN_FAILED`           | Gmail or the model failed                                                |
 | `EMAIL_UPDATE_NOT_FOUND`      | Not the caller's update, or a suggestion already handled                 |
-| `EMAIL_UPDATE_NOT_APPLIED`    | Undo on an update that isn't applied                                     |
+| `EMAIL_UPDATE_NOT_APPLIED`    | Editing (or undoing) an update that isn't applied                        |
+| `EMAIL_UPDATE_BAD_STAGE`      | Editing an email's stage to Wishlist                                     |
+| `EMAIL_NOT_FOUND`             | Opening an email that isn't one of the caller's job emails, or is gone   |
+| `EMAIL_READ_FAILED`           | Gmail failed while opening an email                                      |
 | `EMAIL_UPDATE_STALE`          | Undo after the status was changed by hand                                |
 | `EMAIL_SUGGESTION_NOT_FOUND`  | Not the caller's suggestion, or one already handled                      |
 | `EMAIL_SUGGESTION_INCOMPLETE` | Adding a suggestion with no company or role                              |

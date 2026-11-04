@@ -16,6 +16,7 @@ import type {
   StatusChange,
   EmailApplication,
   EmailConnection,
+  EmailMessage,
   EmailScanResult,
   EmailUpdate,
 } from '../models/types'
@@ -126,6 +127,7 @@ export function toRow(input: ApplicationInput) {
 interface EmailUpdateRow {
   id: string
   application_id: string
+  message_id: string
   from_address: string
   subject: string
   received_at: string
@@ -139,6 +141,7 @@ export function toEmailUpdate(r: EmailUpdateRow): EmailUpdate {
   return {
     id: r.id,
     applicationId: r.application_id,
+    messageId: r.message_id,
     fromAddress: r.from_address,
     subject: r.subject,
     receivedAt: r.received_at,
@@ -180,6 +183,7 @@ async function invokeFunction<T>(
 interface EmailApplicationRow {
   id: string
   application_id: string | null
+  message_id: string
   from_address: string
   subject: string
   received_at: string
@@ -194,6 +198,7 @@ export function toEmailApplication(r: EmailApplicationRow): EmailApplication {
   return {
     id: r.id,
     applicationId: r.application_id,
+    messageId: r.message_id,
     fromAddress: r.from_address,
     subject: r.subject,
     receivedAt: r.received_at,
@@ -363,7 +368,7 @@ export function createSupabaseApi(
       const { data, error } = await db
         .from('email_status_updates')
         .select(
-          'id, application_id, from_address, subject, received_at, detected_status, previous_status, reason, state',
+          'id, application_id, message_id, from_address, subject, received_at, detected_status, previous_status, reason, state',
         )
         .order('received_at', { ascending: false })
         .limit(50)
@@ -372,13 +377,22 @@ export function createSupabaseApi(
     },
 
     applyEmailUpdate: (id) => rpc('apply_email_update', id),
-    undoEmailUpdate: (id) => rpc('undo_email_update', id),
+    async correctEmailUpdate(id, status) {
+      const { error } = await db.rpc('correct_email_update', { p_id: id, p_status: status })
+      return error ? { data: null, error: toServiceError(error, 'EMAIL_UPDATE_FAILED') } : ok(null)
+    },
     dismissEmailUpdate: (id) => rpc('dismiss_email_update', id),
+
+    async readEmail(messageId) {
+      return invokeFunction<EmailMessage>(db, 'email-connect', { action: 'read', messageId }, EMAIL_UNAVAILABLE)
+    },
 
     async listEmailApplications() {
       const { data, error } = await db
         .from('email_new_applications')
-        .select('id, application_id, from_address, subject, received_at, link, company, role, reason, state')
+        .select(
+          'id, application_id, message_id, from_address, subject, received_at, link, company, role, reason, state',
+        )
         .in('state', ['created', 'suggested'])
         .order('received_at', { ascending: false })
         .limit(50)
@@ -394,7 +408,14 @@ export function createSupabaseApi(
       })
       return error ? { data: null, error: toServiceError(error, 'EMAIL_UPDATE_FAILED') } : ok(null)
     },
-    undoEmailApplication: (id) => rpc('undo_email_application', id),
+    async correctEmailApplication(id, fix) {
+      const { error } = await db.rpc('correct_email_application', {
+        p_id: id,
+        p_company: fix.company,
+        p_role: fix.role,
+      })
+      return error ? { data: null, error: toServiceError(error, 'EMAIL_UPDATE_FAILED') } : ok(null)
+    },
     dismissEmailApplication: (id) => rpc('dismiss_email_application', id),
   }
 }

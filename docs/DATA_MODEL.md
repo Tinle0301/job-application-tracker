@@ -29,7 +29,7 @@ auth.users ─┬─< applications ─┬─< status_history
 
 ## status_history (0001, written by 0003 trigger)
 
-Append-only: `application_id`, `status`, `changed_at`, `source` (`manual` | `email`, 0007) and `email_update_id` (the email that made the change). One row on insert, one more each time `status` actually changes. Users can read their own rows; nobody writes directly. The one exception to append-only: undoing an email update deletes that email's row (0007).
+Append-only: `application_id`, `status`, `changed_at`, `source` (`manual` | `email`, 0007) and `email_update_id` (the email that made the change). One row on insert, one more each time `status` actually changes. Users can read their own rows; nobody writes directly. The exceptions to append-only: undoing an email update deletes that email's row (0007), and editing one changes that row's status in place or deletes it (0013).
 
 ## resumes (0004)
 
@@ -77,6 +77,8 @@ Every table has RLS enabled. All policies are scoped to the `authenticated` role
 | `apply_email_update(id)`                     | RPC: moves the application to the email's status (0007)         |
 | `undo_email_update(id)`                      | RPC: restores the previous status, drops the timeline row       |
 | `dismiss_email_update(id)`                   | RPC: hides a suggestion                                         |
+| `correct_email_update(id, status?)`          | RPC: fixes the email's stage in place, or drops its step (0013) |
+| `correct_email_application(id, co, role)`    | RPC: fixes company and role of a job an email added (0013)      |
 | `add_email_application(id, company?, role?)` | RPC: adds the application a confirmation email describes (0008) |
 | `undo_email_application(id)`                 | RPC: deletes it again while it is still at Applied              |
 | `dismiss_email_application(id)`              | RPC: hides a suggested application                              |
