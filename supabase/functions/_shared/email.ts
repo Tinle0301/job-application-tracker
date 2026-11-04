@@ -419,6 +419,18 @@ export function matchApplicationByBody(email: EmailSummary, apps: TrackedApplica
 
 const RANK: Partial<Record<Stage, number>> = { wishlist: 0, applied: 1, assessment: 2, interviewing: 3, offer: 4 }
 
+const ASSESSMENT_SUBJECT =
+  /\b(?:assessments?|coding (?:challenge|test)|online test|take[- ]home|hirevue|codility|hackerrank|codesignal)\b/i
+
+/**
+ * Corrects a stage the model often gets wrong: a subject that calls the step
+ * an assessment ("Invitation to complete an assessment", sent from a video
+ * interview platform) is an assessment, not an interview.
+ */
+export function correctStage<S extends string>(subject: string, stage: S): S | 'assessment' {
+  return stage === 'interviewing' && ASSESSMENT_SUBJECT.test(subject) ? 'assessment' : stage
+}
+
 /** Below this the model's answer is only offered as a suggestion. */
 export const AUTO_APPLY_CONFIDENCE = 0.75
 /** Role for jobs added from a confirmation email that doesn't name one. */

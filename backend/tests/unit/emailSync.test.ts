@@ -4,6 +4,7 @@ import {
   companyScore,
   confirmationFromSubject,
   confirmationQuery,
+  correctStage,
   decideNewApplication,
   decideUpdate,
   gmailLink,
@@ -476,5 +477,15 @@ describe('confirmationFromSubject', () => {
     expect(confirmationFromSubject('Appreciate your interest in Salient Motion!')).toBeNull()
     expect(confirmationFromSubject('Next steps for your interview')).toBeNull()
     expect(confirmationFromSubject('Thank you for applying to the role, we will review your profile soon')).toBeNull()
+  })
+})
+
+describe('correctStage', () => {
+  it('keeps an assessment invitation from counting as an interview', () => {
+    const wtw = 'WTW- Invitation to complete an assessment - Early Careers: Employee Experience Analyst'
+    expect(correctStage(wtw, 'interviewing')).toBe('assessment')
+    expect(correctStage('Your HireVue invitation', 'interviewing')).toBe('assessment')
+    expect(correctStage('Interview invitation: Software Engineer', 'interviewing')).toBe('interviewing')
+    expect(correctStage(wtw, 'rejected')).toBe('rejected')
   })
 })
