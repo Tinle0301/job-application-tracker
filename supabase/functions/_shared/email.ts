@@ -304,6 +304,10 @@ export function companyScore(email: EmailSummary, company: string): number {
   let score = 0
   const labels = senderLabels(email.fromAddress)
   if (labels.some((l) => l === compact || (head && l === head[0]))) score = Math.max(score, 3)
+  // A domain that starts with the name ("telusinternational.ai" for "TELUS Digital") counts for
+  // less; names under 5 letters are too likely to start unrelated words.
+  const stems = [compact, head?.[0]].filter((w): w is string => !!w && w.length >= 5)
+  if (labels.some((l) => stems.some((w) => l.startsWith(w)))) score = Math.max(score, 2)
 
   const fields: [string, number][] = [
     [email.fromName, 3],

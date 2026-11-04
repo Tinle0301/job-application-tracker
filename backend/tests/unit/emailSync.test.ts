@@ -113,6 +113,10 @@ describe('matching an email to an application', () => {
 
   it('matches ATS mail by display name or subject, not by the ATS domain', () => {
     expect(companyScore(email({ fromAddress: 'no-reply@greenhouse.io' }), 'Greenhouse')).toBe(0)
+    // The domain starts with the company's name.
+    expect(companyScore(email({ fromAddress: 'no-reply@telusinternational.ai' }), 'TELUS Digital')).toBe(2)
+    expect(companyScore(email({ fromAddress: 'no-reply@telusinternational.ai' }), 'TELUS')).toBe(2)
+    expect(companyScore(email({ fromAddress: 'jobs@metabase.com' }), 'Meta')).toBe(0)
     expect(companyScore(email({ fromName: 'Contoso Hiring Team', fromAddress: 'x@lever.co' }), 'Contoso')).toBe(3)
     expect(companyScore(email({ subject: 'Thank you for applying to Contoso!' }), 'Contoso')).toBe(2)
     expect(companyScore(email({ snippet: 'the team at Contoso' }), 'Contoso')).toBe(1)
