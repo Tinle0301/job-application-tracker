@@ -291,6 +291,45 @@ async function addFromConfirmations(
     .filter((h) => h.fromAddress !== ctx.account && looksLikeConfirmation(h))
     .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt)) // oldest first, so a repeat confirmation is a duplicate
 
+  /** Records what an email says about a tracked application's stage, and applies it when sure. */
+  const moveByEmail = async (app: TrackedApplication, c: ConfirmationOut, email: EmailSummary) => {
+    const previous = app.status
+    const action = decideUpdate(previous, c.stage, c.confidence, false)
+    if (action === 'skip') return
+    const { data: upd } = await db
+      .from('email_status_updates')
+      .upsert(
+        {
+          user_id: userId,
+          application_id: app.id,
+          message_id: email.id,
+          from_address: email.fromAddress.slice(0, 320),
+          subject: email.subject.slice(0, 500),
+          received_at: email.receivedAt,
+          detected_status: c.stage,
+          previous_status: previous,
+          confidence: c.confidence,
+          reason: c.reason,
+          state: 'suggested',
+        },
+        { onConflict: 'user_id,message_id', ignoreDuplicates: true },
+      )
+      .select('id')
+      .maybeSingle()
+    if (!upd) return
+    if (action === 'apply' && !(await db.rpc('apply_email_update', { p_id: upd.id })).error) {
+      app.status = c.stage
+      // A wishlist entry has no applied date yet: use the email's.
+      if (previous === 'wishlist')
+        await db
+          .from('applications')
+          .update({ applied_on: localDate(email.receivedAt, ctx.timeZone) })
+          .eq('id', app.id)
+          .is('applied_on', null)
+      result.applied++
+    } else result.suggested++
+  }
+
   /** Saves one classified email, and adds, links or queues its application. */
   const handle = async (c: ConfirmationOut, email: EmailSummary) => {
     const decision = decideNewApplication({ ...c, receivedAt: email.receivedAt }, apps)
@@ -322,41 +361,8 @@ async function addFromConfirmations(
 
     if (decision.action === 'duplicate') {
       await recordEmails(db, userId, ctx.account, [{ email, applicationId: decision.application.id }])
-      // Already tracked: a wishlist entry moves to applied; anything else stays as it is.
-      const app = decision.application
-      if (app.status !== 'wishlist') return
-      const action = decideUpdate(app.status, 'applied', c.confidence, false)
-      const { data: upd } = await db
-        .from('email_status_updates')
-        .upsert(
-          {
-            user_id: userId,
-            application_id: app.id,
-            message_id: email.id,
-            from_address: email.fromAddress.slice(0, 320),
-            subject: email.subject.slice(0, 500),
-            received_at: email.receivedAt,
-            detected_status: 'applied',
-            previous_status: 'wishlist',
-            confidence: c.confidence,
-            reason: c.reason,
-            state: 'suggested',
-          },
-          { onConflict: 'user_id,message_id', ignoreDuplicates: true },
-        )
-        .select('id')
-        .maybeSingle()
-      if (!upd) return
-      if (action === 'apply' && !(await db.rpc('apply_email_update', { p_id: upd.id })).error) {
-        app.status = 'applied'
-        // A wishlist entry has no applied date yet: use the confirmation's.
-        await db
-          .from('applications')
-          .update({ applied_on: localDate(email.receivedAt, ctx.timeZone) })
-          .eq('id', app.id)
-          .is('applied_on', null)
-        result.applied++
-      } else result.suggested++
+      // Already tracked: move it on if the email says so (a wishlist entry to applied, a rejection, ...).
+      await moveByEmail(decision.application, c, email)
       return
     }
 
@@ -366,14 +372,17 @@ async function addFromConfirmations(
       if (!addError && appId) {
         await recordEmails(db, userId, ctx.account, [{ email, applicationId: appId as string }])
         // Later emails in this scan see it, so a second confirmation is a duplicate.
-        apps.push({
+        const app: TrackedApplication = {
           id: appId as string,
           company: c.company,
           role,
           status: 'applied',
           updatedAt: new Date().toISOString(),
-        })
+        }
+        apps.push(app)
         result.added++
+        // An update about a job that wasn't tracked yet (a rejection, an interview): set its stage too.
+        if (c.stage !== 'applied') await moveByEmail(app, c, email)
         return
       }
     }
@@ -392,6 +401,7 @@ async function addFromConfirmations(
       {
         id: e.id,
         confirmation: true,
+        stage: 'applied',
         ...known,
         location: '',
         confidence: SUBJECT_CONFIDENCE,

@@ -205,9 +205,10 @@ ${e.body.replace(/<\/?email\b/gi, '[email')}
 
 // ---------------------------------------------------------------- new applications from email
 
-export const CONFIRM_SYSTEM = `You read emails a job seeker received and find the ones confirming that they submitted a job application.
+export const CONFIRM_SYSTEM = `You read emails a job seeker received and find the ones about a job application they already submitted.
 For each email:
-- confirmation: true only if the email confirms an application the candidate already submitted ("Thank you for applying", "We received your application", "Your application was sent to ..."). False for job alerts, recommended jobs, reminders to finish an application, account sign-ups, assessments, interview invitations, offers, rejections, newsletters and recruiter outreach.
+- confirmation: true if the email is about an application the candidate already submitted: a confirmation ("Thank you for applying", "We received your application", "Your application was sent to ...") or a later update on it (an assessment or coding test, an interview invitation, an offer, a rejection). False for job alerts, recommended jobs, reminders to finish an application, account sign-ups, newsletters and recruiter outreach about jobs they did not apply to.
+- stage: where that application stands after this email: applied (a confirmation), assessment, interviewing, offer or rejected.
 - company: the hiring company's name as the email gives it, without "Careers", "Recruiting" or "Talent Team". Never the job board or applicant-tracking system that sent the email (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Wellfound, Handshake, Greenhouse, Lever, Workday, Ashby, iCIMS, SmartRecruiters, Jobvite, Workable) unless it is the employer. Empty if not stated.
 - role: the job title applied for, as written, without requisition or job numbers. Empty if not stated.
 - location: where the job is, if stated; else empty.
@@ -227,13 +228,14 @@ export const CONFIRM_TOOL = {
           properties: {
             id: { type: 'string', description: 'The id attribute of the <email>' },
             confirmation: { type: 'boolean' },
+            stage: { type: 'string', enum: ['applied', 'assessment', 'interviewing', 'offer', 'rejected'] },
             company: { type: 'string' },
             role: { type: 'string' },
             location: { type: 'string' },
             confidence: { type: 'number' },
             reason: { type: 'string', description: 'Under 15 words, e.g. "Confirms your application was received"' },
           },
-          required: ['id', 'confirmation', 'company', 'role', 'location', 'confidence', 'reason'],
+          required: ['id', 'confirmation', 'stage', 'company', 'role', 'location', 'confidence', 'reason'],
         },
       },
     },
@@ -244,12 +246,16 @@ export const CONFIRM_TOOL = {
 export interface ConfirmationOut {
   id: string
   confirmation: boolean
+  /** Where the application stands after this email ('applied' for a plain confirmation). */
+  stage: Exclude<EmailStageOut['stage'], 'none'>
   company: string
   role: string
   location: string
   confidence: number
   reason: string
 }
+
+const CONFIRM_STAGES = new Set(['applied', 'assessment', 'interviewing', 'offer', 'rejected'])
 
 /** Keeps only well-formed results for ids that were asked about. */
 export function validateConfirmations(input: unknown, ids: string[]): ConfirmationOut[] {
@@ -267,6 +273,9 @@ export function validateConfirmations(input: unknown, ids: string[]): Confirmati
     out.set(id, {
       id,
       confirmation: o.confirmation === true,
+      stage: CONFIRM_STAGES.has(str(o.stage, 20).toLowerCase())
+        ? (str(o.stage, 20).toLowerCase() as ConfirmationOut['stage'])
+        : 'applied',
       company: str(o.company, 200),
       role: str(o.role, 200),
       location: str(o.location, 200),
