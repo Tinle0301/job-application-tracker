@@ -121,8 +121,9 @@ ${resume}
 export const EMAIL_SYSTEM = `You read emails a job seeker received and say which hiring stage each one shows for the application it is about.
 Stages:
 - applied: confirms an application was received or submitted.
-- assessment: invites the candidate to an online assessment, coding challenge, take-home or test.
-- interviewing: invites the candidate to schedule or attend an interview, phone screen or recruiter call, or confirms one.
+- assessment: invites the candidate to an online assessment, coding challenge, take-home or test, including a recorded one-way video interview or game-based assessment (HireVue, Pymetrics, Codility, HackerRank, CodeSignal and the like).
+- interviewing: invites the candidate to schedule or attend a live interview with a person, phone screen or recruiter call, or confirms one. Never for an email whose subject calls it an assessment or test.
+A thank-you for completing an assessment, or a report on it ("Your insights are available"), is none: it is not a new step.
 - offer: extends a job offer.
 - rejected: says the company is not moving forward, the position is filled or closed.
 - none: anything else (job alerts, newsletters, marketing, recruiter outreach about a different job, reminders with no new step, emails you are unsure about).

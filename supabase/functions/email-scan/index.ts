@@ -13,6 +13,7 @@ import {
   SCAN_OVERLAP_SECONDS,
   confirmationFromSubject,
   confirmationQuery,
+  correctStage,
   decideNewApplication,
   decideUpdate,
   gmailLink,
@@ -438,11 +439,10 @@ async function addFromConfirmations(
       batch.map((e) => e.id),
     )
 
-    for (const c of found)
-      await handle(
-        c,
-        batch.find((e) => e.id === c.id)!,
-      )
+    for (const c of found) {
+      const email = batch.find((e) => e.id === c.id)!
+      await handle({ ...c, stage: correctStage(email.subject, c.stage) }, email)
+    }
   }
   return complete
 }
@@ -701,6 +701,7 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
 
     for (const stage of stages) {
       const m = batch.find((b) => b.email.id === stage.id)!
+      stage.stage = correctStage(m.email.subject, stage.stage)
       const app = m.match.application
       const current = statusOf.get(app.id) ?? app.status
       const action = decideUpdate(current, stage.stage, stage.confidence, m.match.ambiguous)
