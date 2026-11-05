@@ -587,7 +587,13 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
     db,
     userId,
     cfg,
-    { accessToken, account: own, since: Math.min(sinceFor(conn.confirmations_scanned_at), recheckSince), timeZone, timeLeft },
+    {
+      accessToken,
+      account: own,
+      since: Math.min(sinceFor(conn.confirmations_scanned_at), recheckSince),
+      timeZone,
+      timeLeft,
+    },
     apps,
     result,
   )
