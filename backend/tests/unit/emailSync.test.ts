@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   companyScore,
+  confirmationFromEmail,
   confirmationFromSubject,
   confirmationQuery,
   correctStage,
@@ -261,12 +262,15 @@ describe('adding applications from confirmation emails', () => {
     expect(q.startsWith('after:1760000000 -from:me')).toBe(true)
     expect(q).toContain('"thank you for applying"')
     expect(q).toContain('"received your application"')
+    expect(q).toContain('"thanks so much for applying"')
+    expect(q).toContain('"thanks for your interest"')
   })
 
   it('spots confirmation subjects and previews', () => {
     expect(looksLikeConfirmation(email({ subject: 'Thank you for applying to Northwind!' }))).toBe(true)
     expect(looksLikeConfirmation(email({ snippet: "We've received your application for Data Analyst" }))).toBe(true)
     expect(looksLikeConfirmation(email({ subject: 'Your application was sent to Contoso' }))).toBe(true)
+    expect(looksLikeConfirmation(email({ subject: 'Thanks for your interest in ZipRecruiter!' }))).toBe(true)
     expect(looksLikeConfirmation(email({ subject: '10 new Data Analyst jobs near you' }))).toBe(false)
   })
 
@@ -477,6 +481,47 @@ describe('confirmationFromSubject', () => {
     expect(confirmationFromSubject('Appreciate your interest in Salient Motion!')).toBeNull()
     expect(confirmationFromSubject('Next steps for your interview')).toBeNull()
     expect(confirmationFromSubject('Thank you for applying to the role, we will review your profile soon')).toBeNull()
+  })
+})
+
+describe('confirmationFromEmail', () => {
+  it('reads the role and company from the preview when the subject names neither', () => {
+    expect(
+      confirmationFromEmail({
+        subject: 'Thanks for your interest in ZipRecruiter!',
+        snippet:
+          'Hi Tin, Thanks so much for applying to the Software Engineer - New Grad role at ZipRecruiter! Here at ZipRecruiter, we love connecting people',
+      }),
+    ).toEqual({ company: 'ZipRecruiter', role: 'Software Engineer - New Grad' })
+    expect(
+      confirmationFromEmail({
+        subject: 'Application update',
+        snippet: 'Thank you for your application for the Data Analyst position at Contoso. We will review it soon.',
+      }),
+    ).toEqual({ company: 'Contoso', role: 'Data Analyst' })
+  })
+
+  it('still uses the subject first', () => {
+    expect(confirmationFromEmail({ subject: 'Thank you for applying to Adobe', snippet: 'We got it.' })).toEqual({
+      company: 'Adobe',
+      role: '',
+    })
+  })
+
+  it('leaves rejections and vague previews to the model', () => {
+    expect(
+      confirmationFromEmail({
+        subject: 'Thank you for applying to Acme',
+        snippet:
+          'Thank you for applying to the Analyst role at Acme. Unfortunately, we have decided to move forward with other candidates.',
+      }),
+    ).toBeNull()
+    expect(
+      confirmationFromEmail({
+        subject: 'Thanks for your interest in Acme!',
+        snippet: 'Our team is reviewing applications.',
+      }),
+    ).toBeNull()
   })
 })
 
