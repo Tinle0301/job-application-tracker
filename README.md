@@ -14,7 +14,7 @@ Track job applications from wishlist to offer, with two AI helpers: **paste a jo
 - **Search, filter, sort.**
 - **AI auto-fill** _(optional: off until enabled)_: paste a job link (LinkedIn, Greenhouse, Lever, Ashby, Workday or most career pages) or the posting text; company, role, location, salary, requirements and the full description are filled in. Only empty fields are touched.
 - **AI resume match** _(optional: off until enabled)_: a 0–100 fit score per application with matched and missing skills and up to five resume suggestions. The latest score shows in the list.
-- **Email sync** _(optional: off until enabled)_: connect the Gmail you apply from (read-only). "Thanks for applying" emails add new applications automatically (unsure ones wait as suggestions), and statuses move when assessment, interview, offer or rejection emails arrive. Each change can be undone. See [docs/EMAIL_SYNC.md](docs/EMAIL_SYNC.md).
+- **Email sync** _(optional: off until enabled)_: connect the Gmail you apply from (read-only). "Thanks for applying" emails add new applications automatically (unsure ones wait as suggestions), and statuses move when assessment, interview, offer or rejection emails arrive. Each change can be opened to read the email and fixed with Edit. See [docs/EMAIL_SYNC.md](docs/EMAIL_SYNC.md).
 - **Two modes**: demo (localStorage, no setup) and Supabase (email + password sign-in, row-level security, optional AI).
 
 ## Tech stack

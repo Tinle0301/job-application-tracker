@@ -104,6 +104,8 @@ export interface EmailConnection {
 export interface EmailUpdate {
   id: string
   applicationId: string
+  /** Gmail's id for the email, used to open it. */
+  messageId: string
   fromAddress: string
   subject: string
   receivedAt: string
@@ -118,6 +120,8 @@ export interface EmailApplication {
   id: string
   /** The application it added (null while it is a suggestion). */
   applicationId: string | null
+  /** Gmail's id for the email, used to open it. */
+  messageId: string
   fromAddress: string
   subject: string
   receivedAt: string
@@ -127,6 +131,18 @@ export interface EmailApplication {
   role: string
   reason: string
   state: 'created' | 'suggested'
+}
+
+/** One job email, read from Gmail when the user opens it (never stored). */
+export interface EmailMessage {
+  fromName: string
+  fromAddress: string
+  subject: string
+  receivedAt: string
+  /** Plain text of the email. */
+  body: string
+  /** Opens the email in Gmail. */
+  link: string
 }
 
 export interface EmailScanResult {

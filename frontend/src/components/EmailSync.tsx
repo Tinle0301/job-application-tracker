@@ -5,8 +5,10 @@ import type {
   EmailConnection,
   EmailScanResult,
   EmailUpdate,
+  Status,
 } from '@backend/models/types'
 import type { TrackerApi } from '@backend/services/api'
+import { EmailEditor, type EmailEdit } from './EmailEditor'
 import { StatusBadge } from './StatusBadge'
 
 /** Scan by itself when the app opens and the last scan is older than this. */
@@ -58,18 +60,20 @@ const LEFT_FOR_LATER: Record<NonNullable<EmailScanResult['waiting']>, string> = 
   time: 'Some emails are left for the next check.',
 }
 
-/** A job found in a confirmation email: Undo once added, or Add (with editable company and role) / Dismiss. */
+const editLink = 'text-stone-600 hover:text-stone-900 disabled:opacity-50'
+
+/** A job found in a confirmation email: Edit once added, or Add (with editable company and role) / Dismiss. */
 function NewApplicationRow({
   item,
   busy,
   onAdd,
-  onUndo,
+  onEdit,
   onDismiss,
 }: {
   item: EmailApplication
   busy: boolean
   onAdd: (fix: { company: string; role: string }) => void
-  onUndo: () => void
+  onEdit: () => void
   onDismiss: () => void
 }) {
   const [company, setCompany] = useState(item.company)
@@ -99,13 +103,8 @@ function NewApplicationRow({
         <span className="font-medium">{item.company}</span>
         <span>{item.role}</span>
         {source}
-        <button
-          onClick={onUndo}
-          disabled={busy}
-          className="text-stone-600 hover:text-stone-900 disabled:opacity-50"
-          aria-label={`Undo adding ${item.company}`}
-        >
-          Undo
+        <button onClick={onEdit} disabled={busy} className={editLink} aria-label={`Edit ${item.company} email`}>
+          Edit
         </button>
       </li>
     )
@@ -162,6 +161,7 @@ export function EmailSync({ api, apps, onStatusesChanged }: Props) {
   const [updates, setUpdates] = useState<EmailUpdate[]>([])
   const [newApps, setNewApps] = useState<EmailApplication[]>([])
   const [busy, setBusy] = useState<string | null>(null)
+  const [editing, setEditing] = useState<(EmailEdit & { id: string }) | null>(null)
   const [outcome] = useState(readOutcome)
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(() =>
     outcome ? (OUTCOMES[outcome] ?? OUTCOMES.error) : null,
@@ -245,13 +245,25 @@ export function EmailSync({ api, apps, onStatusesChanged }: Props) {
     if (res.error) setMessage({ kind: 'error', text: res.error.message })
     await loadUpdates()
     onStatusesChanged()
+    return !res.error
+  }
+
+  const saveEdit = async (fix: { stage: Status | null } | { company: string; role: string }) => {
+    if (!editing) return
+    const done = await act(editing.id, (id) =>
+      'stage' in fix ? api.correctEmailUpdate(id, fix.stage) : api.correctEmailApplication(id, fix),
+    )
+    if (done) {
+      setEditing(null)
+      setMessage({ kind: 'ok', text: `${editing.company} updated.` })
+    }
   }
 
   if (connection === undefined) return null
 
   const byId = new Map(apps.map((a) => [a.id, a]))
   const visible = updates.filter((u) => (u.state === 'applied' || u.state === 'suggested') && byId.has(u.applicationId))
-  // An added application deleted by hand since has nothing left to undo.
+  // An added application deleted by hand since has nothing left to edit.
   const found = newApps.filter((n) => n.state === 'suggested' || (n.applicationId && byId.has(n.applicationId)))
 
   return (
@@ -274,7 +286,7 @@ export function EmailSync({ api, apps, onStatusesChanged }: Props) {
             <p className="text-stone-500">
               Connect the Gmail you apply from. The tracker reads job emails only (read-only): it adds an application
               when a company confirms you applied, and moves applications when an assessment, interview, offer or
-              rejection arrives. You can undo any change.
+              rejection arrives. You can open the email and fix any change.
             </p>
           </div>
         )}
@@ -315,7 +327,16 @@ export function EmailSync({ api, apps, onStatusesChanged }: Props) {
                 item={n}
                 busy={busy !== null}
                 onAdd={(fix) => act(n.id, (id) => api.addEmailApplication(id, fix))}
-                onUndo={() => act(n.id, api.undoEmailApplication)}
+                onEdit={() =>
+                  setEditing({
+                    id: n.id,
+                    kind: 'application',
+                    messageId: n.messageId,
+                    company: n.company,
+                    role: n.role,
+                    fallback: n,
+                  })
+                }
                 onDismiss={() => act(n.id, api.dismissEmailApplication)}
               />
             ))}
@@ -342,12 +363,22 @@ export function EmailSync({ api, apps, onStatusesChanged }: Props) {
                 </span>
                 {u.state === 'applied' ? (
                   <button
-                    onClick={() => act(u.id, api.undoEmailUpdate)}
+                    onClick={() =>
+                      setEditing({
+                        id: u.id,
+                        kind: 'stage',
+                        messageId: u.messageId,
+                        company: app.company,
+                        stage: u.detectedStatus,
+                        previous: u.previousStatus,
+                        fallback: u,
+                      })
+                    }
                     disabled={busy !== null}
-                    className="text-stone-600 hover:text-stone-900 disabled:opacity-50"
-                    aria-label={`Undo ${app.company} update`}
+                    className={editLink}
+                    aria-label={`Edit ${app.company} update`}
                   >
-                    Undo
+                    Edit
                   </button>
                 ) : (
                   <span className="flex gap-3">
@@ -373,6 +404,17 @@ export function EmailSync({ api, apps, onStatusesChanged }: Props) {
             )
           })}
         </ul>
+      )}
+
+      {editing && (
+        <EmailEditor
+          key={editing.id}
+          api={api}
+          edit={editing}
+          busy={busy !== null}
+          onSave={saveEdit}
+          onClose={() => setEditing(null)}
+        />
       )}
     </section>
   )

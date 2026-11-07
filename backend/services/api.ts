@@ -12,6 +12,7 @@ import type {
   Usage,
   EmailApplication,
   EmailConnection,
+  EmailMessage,
   EmailScanResult,
   EmailUpdate,
 } from '../models/types'
@@ -50,13 +51,19 @@ export interface TrackerApi {
   listEmailUpdates(): Promise<Result<EmailUpdate[]>>
   /** Accepts a suggestion (or re-applies an undone update). */
   applyEmailUpdate(id: string): Promise<Result<null>>
-  undoEmailUpdate(id: string): Promise<Result<null>>
+  /**
+   * Fixes the stage an applied email update set, changing its timeline step in
+   * place. null means the email was not a stage change: its step is removed.
+   */
+  correctEmailUpdate(id: string, status: Status | null): Promise<Result<null>>
   dismissEmailUpdate(id: string): Promise<Result<null>>
+  /** Reads one of the user's job emails from Gmail (sender, date, subject, text). */
+  readEmail(messageId: string): Promise<Result<EmailMessage>>
   /** Applications added from confirmation emails and suggestions to add, newest first. */
   listEmailApplications(): Promise<Result<EmailApplication[]>>
   /** Adds a suggested application, optionally with a corrected company and role. */
   addEmailApplication(id: string, fix?: { company?: string; role?: string }): Promise<Result<null>>
-  /** Deletes an application an email added (only while it is still at applied). */
-  undoEmailApplication(id: string): Promise<Result<null>>
+  /** Fixes the company and role of an application an email added. */
+  correctEmailApplication(id: string, fix: { company: string; role: string }): Promise<Result<null>>
   dismissEmailApplication(id: string): Promise<Result<null>>
 }
