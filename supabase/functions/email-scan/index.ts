@@ -11,7 +11,7 @@ import { decryptToken } from '../_shared/crypto.ts'
 import {
   FIRST_SCAN_DAYS,
   SCAN_OVERLAP_SECONDS,
-  confirmationFromSubject,
+  confirmationFromEmail,
   confirmationQuery,
   correctStage,
   decideNewApplication,
@@ -390,10 +390,11 @@ async function addFromConfirmations(
     if (decision.action !== 'ignore') result.toAdd++
   }
 
-  // Subjects like "Thank you for applying to Acme" name the company: no AI call needed.
+  // Subjects like "Thank you for applying to Acme", or a preview naming the role
+  // and company, need no AI call.
   const rest: EmailSummary[] = []
   for (const e of candidates) {
-    const known = confirmationFromSubject(e.subject)
+    const known = confirmationFromEmail(e)
     if (!known) {
       rest.push(e)
       continue
@@ -578,12 +579,21 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
   }))
 
   const own = conn.email.toLowerCase()
+  // Reaches back RECHECK_DAYS too: a confirmation the search missed before (new
+  // wording) is still found. Emails already read are skipped by their id.
+  const recheckSince = startedAt.getTime() / 1000 - RECHECK_DAYS * 86400
   await addWaitingWithoutRole(db, userId, apps, result)
   confirmationsComplete = await addFromConfirmations(
     db,
     userId,
     cfg,
-    { accessToken, account: own, since: sinceFor(conn.confirmations_scanned_at), timeZone, timeLeft },
+    {
+      accessToken,
+      account: own,
+      since: Math.min(sinceFor(conn.confirmations_scanned_at), recheckSince),
+      timeZone,
+      timeLeft,
+    },
     apps,
     result,
   )
@@ -596,7 +606,6 @@ async function scanUser(db: SupabaseClient, userId: string, cfg: Settings, timeZ
   // It always reaches back RECHECK_DAYS, so an email that matched nothing before
   // (better matching since, or its application added later) is picked up.
   const statusSince = sinceFor(conn.last_scan_at)
-  const recheckSince = startedAt.getTime() / 1000 - RECHECK_DAYS * 86400
   const ids = await listMessageIds(
     accessToken,
     gmailQuery(Math.min(statusSince, sinceFor(conn.emails_scanned_at), recheckSince)),

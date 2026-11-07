@@ -483,6 +483,13 @@ const CONFIRMATION_PHRASES = [
   'your application to',
   'your application for',
   'thank you for your interest',
+  'thanks for your interest',
+  'thank you so much for applying',
+  'thanks so much for applying',
+  'thank you again for applying',
+  'thanks again for applying',
+  'thank you for submitting your application',
+  'thanks for submitting your application',
 ]
 
 /** Gmail search for application confirmations received after `afterEpochSeconds`. */
@@ -533,6 +540,36 @@ export function confirmationFromSubject(subject: string): { company: string; rol
     return { company: name, role: role ? cleanName(m[role]).slice(0, 200) : '' }
   }
   return null
+}
+
+// "Thanks so much for applying to the Software Engineer - New Grad role at ZipRecruiter!"
+const CONFIRMATION_TEXT =
+  /\b(?:thank you|thanks)(?: so much| again)? for (?:applying|your application|submitting your application) (?:to|for) (?:the |our )?(.+?) (?:role|position|job|opening) (?:at|with) ([^!.,;\n]+)/i
+// A rejection that opens with thanks, read by the model instead.
+const NOT_A_CONFIRMATION =
+  /\b(?:unfortunately|regret|not (?:to )?(?:move|moving) forward|other candidates|no longer)\b/i
+
+/**
+ * Company and role of a confirmation, read without an AI call: from the subject
+ * first, else from a preview like "thanks for applying to the X role at Y".
+ */
+export function confirmationFromEmail(email: { subject: string; snippet: string }): {
+  company: string
+  role: string
+} | null {
+  const fromSubject = confirmationFromSubject(email.subject)
+  const text = email.snippet.replace(/\s+/g, ' ')
+  if (NOT_A_CONFIRMATION.test(text)) return null
+  if (fromSubject) return fromSubject
+  const m = text.match(CONFIRMATION_TEXT)
+  if (!m) return null
+  const role = m[1]
+    .replace(/[!.:,\s]+$/, '')
+    .trim()
+    .slice(0, 200)
+  const company = cleanName(m[2]).slice(0, 200)
+  if (company.length < 2 || company.split(' ').length > 6 || role.length < 2 || role.split(' ').length > 12) return null
+  return { company, role }
 }
 
 /** Subject or preview reads like an application confirmation (cheap check before the model reads it). */
